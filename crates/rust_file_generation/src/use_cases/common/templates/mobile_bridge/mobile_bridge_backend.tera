@@ -39,7 +39,7 @@ impl MobileBackend {
         start_event_dispatch(
             receiver,
             Arc::clone(&dispatcher),
-            Arc::clone(&ctx.quit_signal),
+            ctx.shutdown_rx.clone(),
         );
 
         Arc::new(MobileBackend { ctx, dispatcher })

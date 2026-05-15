@@ -222,7 +222,7 @@ pub fn update(
 
 ### Event Hub
 
-Channel-based event dispatch using a unified `Event` struct. The `start_event_loop` function returns a `thread::JoinHandle<()>` and uses `recv_timeout` (100ms) internally so the stop signal is checked even when no events arrive, ensuring responsive shutdown:
+Channel-based event dispatch using a unified `Event` struct. The `start_event_loop` function returns a `thread::JoinHandle<()>` and blocks on a `flume::Selector` that waits on either the event channel or a shutdown receiver — zero idle CPU, no polling. The thread exits within microseconds of `AppContext::shutdown()` being called (the shared shutdown `Sender` is taken out of `Mutex<Option<…>>` and dropped, which makes every cloned `shutdown_rx` see `Disconnected`):
 
 ```rust
 // Event structure (generated)

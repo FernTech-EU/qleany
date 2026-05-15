@@ -4,14 +4,31 @@ use common::database::db_context::DbContext;
 use common::event::EventHub;
 use common::long_operation::LongOperationManager;
 use common::undo_redo::UndoRedoManager;
+use flume::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
-/// Application context that holds all shared state
+/// Application context that holds all shared state.
+///
+/// Shutdown lifecycle: when [`AppContext::shutdown`] is called the shared
+/// `shutdown_tx` is dropped, which makes every cloned `shutdown_rx`
+/// (held by `EventHubClient::start` threads) see `Disconnected` on its
+/// next `recv()` and exit. No polling and no atomic flag needed.
 #[derive(Clone, Debug)]
 pub struct AppContext {
     pub db_context: DbContext,
     pub event_hub: Arc<EventHub>,
-    pub quit_signal: Arc<std::sync::atomic::AtomicBool>,
+    /// Receiver clones are handed to background event-hub threads.
+    /// Threads exit when the matching sender is dropped via
+    /// [`AppContext::shutdown`].
+    pub shutdown_rx: Receiver<()>,
+    /// Shared single sender. `shutdown()` takes it out, dropping
+    /// the only live `Sender` and unblocking every receiver clone.
+    /// Wrapped in `Mutex<Option<…>>` so `shutdown()` stays `&self`
+    /// (the alternative — store the sender directly in `AppContext`
+    /// — would force every clone to hold its own sender clone and
+    /// `Disconnect` would only fire after the last clone dropped,
+    /// defeating the explicit `shutdown()` API).
+    shutdown_tx: Arc<Mutex<Option<Sender<()>>>>,
     pub undo_redo_manager: Arc<Mutex<UndoRedoManager>>,
     pub long_operation_manager: Arc<Mutex<LongOperationManager>>,
 }
@@ -21,7 +38,10 @@ impl AppContext {
         let db_context = DbContext::new().expect("Failed to create database context");
 
         let event_hub = Arc::new(EventHub::new());
-        let quit_signal = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // Bounded(1) is enough — we only ever drop the sender, never
+        // actually send a unit on this channel. The bound keeps the
+        // allocation tiny.
+        let (shutdown_tx, shutdown_rx) = flume::bounded(1);
 
         let undo_redo_manager = Arc::new(Mutex::new(UndoRedoManager::new()));
         let long_operation_manager = Arc::new(Mutex::new(LongOperationManager::new()));
@@ -35,16 +55,18 @@ impl AppContext {
         Self {
             db_context,
             event_hub,
-            quit_signal,
+            shutdown_rx,
+            shutdown_tx: Arc::new(Mutex::new(Some(shutdown_tx))),
             undo_redo_manager,
             long_operation_manager,
         }
     }
 
-    /// Signal the event hub to stop
+    /// Signal background event-hub threads to stop. Idempotent — the
+    /// second call is a no-op because the sender has already been
+    /// taken.
     pub fn shutdown(&self) {
-        self.quit_signal
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let _ = self.shutdown_tx.lock().unwrap().take();
     }
 }
 

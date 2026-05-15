@@ -53,7 +53,7 @@ fn run_slint(app_context: &Arc<AppContext>) {
     log::info!("Starting Qleany Slint UI");
     // Create the event hub client for backend-to-UI event passing
     let event_hub_client = EventHubClient::new(&app_context.event_hub);
-    event_hub_client.start(app_context.quit_signal.clone());
+    event_hub_client.start(app_context.shutdown_rx.clone());
 
     // Create the Slint UI
     let app = App::new().unwrap();

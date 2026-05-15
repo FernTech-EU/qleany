@@ -4,6 +4,35 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v1.7.3 to v1.7.4 — Event-hub shutdown via channel wakeup
+
+**Qleany version**: v1.7.4
+
+### What changed
+
+`AppContext::quit_signal: Arc<AtomicBool>` is removed. Background event-hub threads (`EventHub::start_event_loop`, `EventHubClient::start`, mobile bridge `start_event_dispatch`) no longer poll a flag every 100–500 ms. They now block on a `flume::Selector` that waits on either the event channel or a shutdown receiver, so idle wake-ups drop to 0 instead of 5–10 per thread per second.
+
+`AppContext` gains two new fields:
+
+- `pub shutdown_rx: Receiver<()>` — handed to every spawned event-loop thread.
+- `shutdown_tx: Arc<Mutex<Option<Sender<()>>>>` (private) — the only live `Sender` clone. `AppContext::shutdown()` `.take()`s it, which makes every cloned receiver see `Disconnected` within microseconds.
+
+`EventHub::start_event_loop`, `EventHubClient::start`, and `start_event_dispatch` now take `Receiver<()>` instead of `Arc<AtomicBool>`.
+
+### Behavioral changes
+
+- **Idle CPU**: ~0 wake-ups per event-loop thread (previously 5/s for `EventHubClient`, 10/s for `EventHub::start_event_loop`, 2/s for the mobile dispatcher). On a host app with many widgets each owning their own backend, savings scale linearly.
+- **Shutdown latency**: microseconds (was up to one polling interval).
+- **`AppContext::shutdown()` is still `&self` and idempotent** — second call is a no-op because the sender has already been taken.
+
+### How to upgrade
+
+1. Regenerate the affected files: `crates/common/src/event.rs`, `crates/frontend/src/app_context.rs`, `crates/frontend/src/event_hub_client.rs`, `crates/slint_ui/src/main.rs` (if using Slint), and the mobile bridge `events.rs` / `backend.rs` (if using the mobile bridge).
+2. **Update hand-written callers**: any code calling `event_hub_client.start(ctx.quit_signal.clone())` must become `event_hub_client.start(ctx.shutdown_rx.clone())`. Same for `start_event_loop` and `start_event_dispatch`.
+3. **Hand-written code that read `ctx.quit_signal` directly** (e.g. to coordinate other shutdown work) must switch to a different mechanism — the field no longer exists. The shutdown channel is single-purpose; if you need a broader shutdown bus, either subscribe to `shutdown_rx` from your own thread (you'll see `Disconnected` when shutdown fires) or layer your own signal alongside.
+
+---
+
 ## v1.6.3 to v1.7.0 — redb replaced by in-memory HashMap store
 
 **Qleany version**: v1.7.0
@@ -166,7 +195,7 @@ No manifest schema changes. These are generated code improvements that affect re
 
 ### Event loop and long operations (v1.5.3)
 
-- **Event loop**: `start_event_loop` now returns `thread::JoinHandle<()>` and uses `recv_timeout(100ms)` so the stop signal is checked even when no events arrive. This fixes unresponsive shutdown.
+- **Event loop**: `start_event_loop` now returns `thread::JoinHandle<()>` and uses `recv_timeout(100ms)` so the stop signal is checked even when no events arrive. This fixes unresponsive shutdown. (Superseded in v1.7.4 — the `recv_timeout` poll is gone, replaced by a true blocking `flume::Selector` wakeup. See the v1.7.3 → v1.7.4 entry.)
 - **Long operations**: A `lock_or_recover` helper handles mutex poisoning gracefully in `LongOperationManager` and `OperationHandle`, replacing all `.lock().unwrap()` calls.
 
 ### Mobile bridge (v1.5.1)

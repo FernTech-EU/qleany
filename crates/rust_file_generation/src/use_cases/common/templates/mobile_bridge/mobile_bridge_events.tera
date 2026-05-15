@@ -11,11 +11,7 @@
 //! sole event consumer: do not instantiate `EventHubClient` or call
 //! `start_event_loop()` alongside `MobileBackend`.
 
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, Mutex,
-};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
 
 use frontend::flat_event::{self, FlatEventKind};
 use frontend::FlatEvent;
@@ -145,8 +141,11 @@ impl MobileEventDispatcher {
 /// Starts the event dispatch thread.
 ///
 /// Receives events from the flume channel, converts them to `MobileEvent`,
-/// and fans out to registered listeners. The thread exits when the channel
-/// is disconnected or the quit signal is set.
+/// and fans out to registered listeners. The thread blocks on a
+/// `flume::Selector` that wakes only when an event arrives or
+/// `shutdown_rx` disconnects — zero CPU while idle. The thread exits
+/// when the matching shutdown `Sender` is dropped (via
+/// [`AppContext::shutdown`]) or when the event channel disconnects.
 ///
 /// This function must be called exactly once per `MobileBackend` instance.
 /// The `receiver` must be the only active receiver on the channel (sole
@@ -154,14 +153,19 @@ impl MobileEventDispatcher {
 pub(crate) fn start_event_dispatch(
     receiver: flume::Receiver<common::event::Event>,
     dispatcher: Arc<Mutex<MobileEventDispatcher>>,
-    quit: Arc<AtomicBool>,
+    shutdown_rx: flume::Receiver<()>,
 ) {
     std::thread::Builder::new()
         .name("mobile-event-dispatch".to_string())
         .spawn(move || {
             loop {
-                match receiver.recv_timeout(Duration::from_millis(500)) {
-                    Ok(event) => {
+                let outcome: Result<Option<common::event::Event>, ()> =
+                    flume::Selector::new()
+                        .recv(&receiver, |r| r.map(Some).map_err(|_| ()))
+                        .recv(&shutdown_rx, |_| Ok(None))
+                        .wait();
+                match outcome {
+                    Ok(Some(event)) => {
                         let flat: FlatEvent = event.into();
                         let mutation = flat_event::is_mutation(&flat.kind);
                         let mobile_event = MobileEvent {
@@ -180,11 +184,7 @@ pub(crate) fn start_event_dispatch(
                             }
                         }
                     }
-                    Err(flume::RecvTimeoutError::Timeout) => {}
-                    Err(flume::RecvTimeoutError::Disconnected) => break,
-                }
-                if quit.load(Ordering::Relaxed) {
-                    break;
+                    Ok(None) | Err(()) => break,
                 }
             }
         })

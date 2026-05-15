@@ -148,7 +148,9 @@ Since v1.5.3, the `LongOperationManager` uses a `lock_or_recover` helper that gr
 
 ### Event loop doesn't shut down cleanly
 
-Since v1.5.3, `start_event_loop` returns a `JoinHandle<()>` and uses `recv_timeout` (100ms) internally. The stop signal is now checked even when no events arrive, ensuring responsive shutdown. If you're on an older version, the event loop could block indefinitely on `recv()` waiting for an event that never comes.
+Since v1.7.4, `start_event_loop` returns a `JoinHandle<()>` and blocks on a `flume::Selector` that waits on either an incoming event or the shutdown receiver. Calling `AppContext::shutdown()` drops the only live shutdown `Sender`, which makes every spawned event-loop thread see `Disconnected` and exit within microseconds — no polling, zero idle CPU. To join the thread on a clean shutdown, capture the `JoinHandle` returned by `start_event_loop` and call `handle.join()` after `ctx.shutdown()`.
+
+(Pre-v1.7.4, the same function used `recv_timeout(100ms)` in a polling loop against an `Arc<AtomicBool>` — functional but spent ~10 CPU wake-ups per second per thread. Pre-v1.5.3, it blocked on `recv()` indefinitely if no events arrived.)
 
 ### Events not received
 
