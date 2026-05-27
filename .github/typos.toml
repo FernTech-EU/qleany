@@ -9,3 +9,6 @@ INVOKABLE = "INVOKABLE"
 
 # Rust variable name
 criticals = "criticals"
+
+# Generated Rust field name (plural of "Entity" entity type)
+entitys = "entitys"
