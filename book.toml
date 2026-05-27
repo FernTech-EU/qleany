@@ -5,5 +5,5 @@ language = "en"
 src = "docs"
 
 [output.html]
-git-repository-url = "https://github.com/jacquetc/qleany"
-edit-url-template = "https://github.com/jacquetc/qleany/edit/main/{path}"
+git-repository-url = "https://github.com/ferntech-eu/qleany"
+edit-url-template = "https://github.com/ferntech-eu/qleany/edit/main/{path}"

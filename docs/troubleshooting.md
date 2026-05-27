@@ -184,7 +184,7 @@ You may have generated in the temp folder. There is a checkbox in the UI to togg
 
 ## Getting Help
 
-If you've worked through this guide and still have issues, open an issue on GitHub: [github.com/jacquetc/qleany/issues](https://github.com/jacquetc/qleany/issues)
+If you've worked through this guide and still have issues, open an issue on GitHub: [github.com/ferntech-eu/qleany/issues](https://github.com/ferntech-eu/qleany/issues)
 
 Include in your issue:
 - What you were trying to do

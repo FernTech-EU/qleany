@@ -10,7 +10,7 @@ Real-world manifests you can reference:
 | Project | Language | Frontend | Link |
 |---------|----------|----------|------|
 | Skribisto | C++20 / Qt6 | QtQuick | [qleany.yaml](https://github.com/jacquetc/skribisto/blob/master/qleany.yaml) |
-| Qleany | Rust 2024 | Slint + CLI | [qleany.yaml](https://github.com/jacquetc/qleany/blob/main/qleany.yaml) |
+| Qleany | Rust 2024 | Slint + CLI | [qleany.yaml](https://github.com/ferntech-eu/qleany/blob/main/qleany.yaml) |
 
 ## Basic Structure
 

@@ -36,10 +36,10 @@ dynamic = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jacquetc/qleany"
-Repository = "https://github.com/jacquetc/qleany"
-Documentation = "https://github.com/jacquetc/qleany#readme"
-Issues = "https://github.com/jacquetc/qleany/issues"
+Homepage = "https://github.com/ferntech-eu/qleany"
+Repository = "https://github.com/ferntech-eu/qleany"
+Documentation = "https://github.com/ferntech-eu/qleany#readme"
+Issues = "https://github.com/ferntech-eu/qleany/issues"
 
 [project.scripts]
 # This creates the `qleany` command that invokes the Rust binary

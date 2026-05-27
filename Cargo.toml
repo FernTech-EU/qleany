@@ -18,8 +18,8 @@ default-members = [
 resolver = "3"
 
 [workspace.package]
-homepage = "https://github.com/jacquetc/qleany"
-repository = "https://github.com/jacquetc/qleany"
+homepage = "https://github.com/ferntech-eu/qleany"
+repository = "https://github.com/ferntech-eu/qleany"
 license = "MPL-2.0"
 edition = "2024"
 version = "1.7.3"
