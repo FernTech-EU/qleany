@@ -119,8 +119,6 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment:
-      name: release
     # Skip for pre-release tags
     if: ${{ !contains(github.ref_name, '-') }}
     steps:
@@ -140,8 +138,6 @@ jobs:
 
       - name: Publish crates to crates.io
         run: cargo publish --workspace
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   # Create the GitHub release
   release:
