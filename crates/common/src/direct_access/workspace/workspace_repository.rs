@@ -774,7 +774,7 @@ impl<'a> WorkspaceRepository<'a> {
             );
         }
         {
-            let child_ids: Vec<_> = store.entitys.read().unwrap().keys().copied().collect();
+            let child_ids: Vec<_> = store.entities.read().unwrap().keys().copied().collect();
             emit(
                 DirectAccessEntity::Entity(EntityEvent::Created),
                 child_ids.clone(),

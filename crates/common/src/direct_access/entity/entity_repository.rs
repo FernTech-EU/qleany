@@ -700,7 +700,7 @@ impl<'a> EntityRepository<'a> {
         };
 
         // Emit Created events for this entity
-        let entity_ids: Vec<_> = store.entitys.read().unwrap().keys().copied().collect();
+        let entity_ids: Vec<_> = store.entities.read().unwrap().keys().copied().collect();
         emit(
             DirectAccessEntity::Entity(EntityEvent::Created),
             entity_ids.clone(),

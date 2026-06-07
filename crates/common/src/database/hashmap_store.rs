@@ -23,7 +23,7 @@ pub struct HashMapStore {
     pub roots: RwLock<HashMap<EntityId, Root>>,
     pub workspaces: RwLock<HashMap<EntityId, Workspace>>,
     pub systems: RwLock<HashMap<EntityId, System>>,
-    pub entitys: RwLock<HashMap<EntityId, Entity>>,
+    pub entities: RwLock<HashMap<EntityId, Entity>>,
     pub fields: RwLock<HashMap<EntityId, Field>>,
     pub features: RwLock<HashMap<EntityId, Feature>>,
     pub files: RwLock<HashMap<EntityId, File>>,
@@ -77,7 +77,7 @@ impl HashMapStore {
             roots: self.roots.read().unwrap().clone(),
             workspaces: self.workspaces.read().unwrap().clone(),
             systems: self.systems.read().unwrap().clone(),
-            entitys: self.entitys.read().unwrap().clone(),
+            entities: self.entities.read().unwrap().clone(),
             fields: self.fields.read().unwrap().clone(),
             features: self.features.read().unwrap().clone(),
             files: self.files.read().unwrap().clone(),
@@ -166,7 +166,7 @@ impl HashMapStore {
         *self.roots.write().unwrap() = snap.roots.clone();
         *self.workspaces.write().unwrap() = snap.workspaces.clone();
         *self.systems.write().unwrap() = snap.systems.clone();
-        *self.entitys.write().unwrap() = snap.entitys.clone();
+        *self.entities.write().unwrap() = snap.entities.clone();
         *self.fields.write().unwrap() = snap.fields.clone();
         *self.features.write().unwrap() = snap.features.clone();
         *self.files.write().unwrap() = snap.files.clone();
@@ -270,7 +270,7 @@ impl HashMapStore {
         *self.roots.write().unwrap() = snap.roots.clone();
         *self.workspaces.write().unwrap() = snap.workspaces.clone();
         *self.systems.write().unwrap() = snap.systems.clone();
-        *self.entitys.write().unwrap() = snap.entitys.clone();
+        *self.entities.write().unwrap() = snap.entities.clone();
         *self.fields.write().unwrap() = snap.fields.clone();
         *self.features.write().unwrap() = snap.features.clone();
         *self.files.write().unwrap() = snap.files.clone();
@@ -351,7 +351,7 @@ pub struct HashMapStoreSnapshot {
     roots: HashMap<EntityId, Root>,
     workspaces: HashMap<EntityId, Workspace>,
     systems: HashMap<EntityId, System>,
-    entitys: HashMap<EntityId, Entity>,
+    entities: HashMap<EntityId, Entity>,
     fields: HashMap<EntityId, Field>,
     features: HashMap<EntityId, Feature>,
     files: HashMap<EntityId, File>,
