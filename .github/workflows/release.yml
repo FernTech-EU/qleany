@@ -121,6 +121,8 @@ jobs:
     timeout-minutes: 15
     environment:
       name: release
+    permissions:
+      id-token: write
     # Skip for pre-release tags
     if: ${{ !contains(github.ref_name, '-') }}
     steps:
@@ -138,10 +140,65 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
+      - name: Auth for trusted publishing on crates.io
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
       - name: Publish crates to crates.io
-        run: cargo publish --workspace
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        # `cargo publish --workspace` is NOT resumable: it aborts on the first
+        # crate version already on the index, and it can die mid-run with an
+        # internal error while crates.io's index catches up after an upload
+        # (rust-lang/cargo#17028). To survive both, each attempt excludes the
+        # versions already published and retries, so every attempt makes
+        # forward progress until nothing is left to publish.
+        run: |
+          set -uo pipefail
+
+          # True if <name>@<version> is already on the crates.io sparse index.
+          crate_published() {
+            local name="$1" version="$2" len=${#1} prefix
+            if   (( len <= 2 )); then prefix="$len"
+            elif (( len == 3 )); then prefix="3/${name:0:1}"
+            else prefix="${name:0:2}/${name:2:2}"; fi
+            curl -sf "https://index.crates.io/${prefix}/${name}" 2>/dev/null \
+              | jq -e --arg v "$version" 'select(.vers == $v)' >/dev/null 2>&1
+          }
+
+          mapfile -t CRATES < <(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | "\(.name) \(.version)"')
+
+          for attempt in 1 2 3 4 5; do
+            excludes=()
+            pending=0
+            for entry in "${CRATES[@]}"; do
+              name=${entry% *}; version=${entry#* }
+              if crate_published "$name" "$version"; then
+                excludes+=(--exclude "$name")
+              else
+                pending=$((pending + 1))
+              fi
+            done
+
+            if (( pending == 0 )); then
+              echo "All crates already published."
+              exit 0
+            fi
+
+            echo "::group::cargo publish (attempt $attempt, $pending pending)"
+            if cargo publish --workspace "${excludes[@]}"; then
+              echo "::endgroup::"
+              echo "Publish complete."
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "Attempt $attempt failed; waiting for the index to settle..."
+            sleep 60
+          done
+
+          echo "::error::cargo publish still failing after 5 attempts."
+          exit 1
 
   # Create the GitHub release
   release:
