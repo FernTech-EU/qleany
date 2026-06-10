@@ -22,7 +22,7 @@ homepage = "https://github.com/ferntech-eu/qleany"
 repository = "https://github.com/ferntech-eu/qleany"
 license = "MPL-2.0"
 edition = "2024"
-version = "1.7.7"
+version = "1.7.8"
 authors = ["Cyril Jacquet <cyril.jacquet@ferntech.eu>"]
 documentation = "https://docs.rs/qleany/"
 readme = "README.md"
@@ -42,14 +42,14 @@ chrono = { version = "0.4" , features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # Internal crates
-common = { package = "qleany-common", version = "1.7.7", path = "crates/common" }
-macros = { package = "qleany-macros", version = "1.7.7", path = "crates/macros" }
-direct_access = { package = "qleany-direct-access", version = "1.7.7", path = "crates/direct_access" }
-handling_manifest = { package = "qleany-handling-manifest", version = "1.7.7", path = "crates/handling_manifest" }
-rust_file_generation = { package = "qleany-rust-file-generation", version = "1.7.7", path = "crates/rust_file_generation" }
-cpp_qt_file_generation = { package = "qleany-cpp-qt-file-generation", version = "1.7.7", path = "crates/cpp_qt_file_generation" }
-handling_app_lifecycle = { package = "qleany-handling-app-lifecycle", version = "1.7.7", path = "crates/handling_app_lifecycle" }
-file_generation_shared_steps = { package = "qleany-file-generation-shared-steps", version = "1.7.7", path = "crates/file_generation_shared_steps" }
+common = { package = "qleany-common", version = "1.7.8", path = "crates/common" }
+macros = { package = "qleany-macros", version = "1.7.8", path = "crates/macros" }
+direct_access = { package = "qleany-direct-access", version = "1.7.8", path = "crates/direct_access" }
+handling_manifest = { package = "qleany-handling-manifest", version = "1.7.8", path = "crates/handling_manifest" }
+rust_file_generation = { package = "qleany-rust-file-generation", version = "1.7.8", path = "crates/rust_file_generation" }
+cpp_qt_file_generation = { package = "qleany-cpp-qt-file-generation", version = "1.7.8", path = "crates/cpp_qt_file_generation" }
+handling_app_lifecycle = { package = "qleany-handling-app-lifecycle", version = "1.7.8", path = "crates/handling_app_lifecycle" }
+file_generation_shared_steps = { package = "qleany-file-generation-shared-steps", version = "1.7.8", path = "crates/file_generation_shared_steps" }
 
 [workspace.lints.rust]
 
