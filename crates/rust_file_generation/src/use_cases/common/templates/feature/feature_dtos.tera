@@ -47,6 +47,8 @@ use common::entities::{
 {%- for df in uc.dto_in.fields %}
 {%- if df.inner.field_type == "Float" %}
 {%- set_global has_float = true %}
+{%- elif df.inner.field_type == "Enum" and df.enum_needs_float %}
+{%- set_global has_float = true %}
 {%- endif %}
 {%- endfor %}
 #[derive(Debug, Clone, PartialEq, {% if not has_float %}Eq, {% endif %}Default, Serialize, Deserialize)]
@@ -79,6 +81,8 @@ pub enum {{ df.inner.enum_name }} {
 {%- set_global has_float = false %}
 {%- for df in uc.dto_out.fields %}
 {%- if df.inner.field_type == "Float" %}
+{%- set_global has_float = true %}
+{%- elif df.inner.field_type == "Enum" and df.enum_needs_float %}
 {%- set_global has_float = true %}
 {%- endif %}
 {%- endfor %}

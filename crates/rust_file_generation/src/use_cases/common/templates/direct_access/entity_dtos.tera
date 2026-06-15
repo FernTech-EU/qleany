@@ -13,6 +13,8 @@ pub use common::entities::{{ f.inner.enum_name }};
 {%- endif %}
 {%- if f.inner.field_type == "Float" %}
 {%- set_global has_float = true %}
+{%- elif f.inner.field_type == "Enum" and f.enum_needs_float %}
+{%- set_global has_float = true %}
 {%- endif %}
 {%- endfor %}
 
@@ -99,6 +101,8 @@ impl From<{{ s.entities[e].pascal_name }}> for Create{{ s.entities[e].pascal_nam
 {%- set_global has_float_normal = false %}
 {%- for f in s.entities[e].normal_fields %}
 {%- if f.inner.field_type == "Float" %}
+{%- set_global has_float_normal = true %}
+{%- elif f.inner.field_type == "Enum" and f.enum_needs_float %}
 {%- set_global has_float_normal = true %}
 {%- endif %}
 {%- endfor %}

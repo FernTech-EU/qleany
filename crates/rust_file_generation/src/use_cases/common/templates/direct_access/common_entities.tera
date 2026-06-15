@@ -9,6 +9,8 @@ use crate::types::HasId;
 {%- for f in ent.fields %}
 {%- if f.inner.field_type == "Float" %}
 {%- set_global has_float = true %}
+{%- elif f.inner.field_type == "Enum" and f.enum_needs_float %}
+{%- set_global has_float = true %}
 {%- endif %}
 {%- endfor %}
 #[derive(Debug, Clone, PartialEq, {% if not has_float %}Eq, {% endif %}Default, Serialize, Deserialize)]
