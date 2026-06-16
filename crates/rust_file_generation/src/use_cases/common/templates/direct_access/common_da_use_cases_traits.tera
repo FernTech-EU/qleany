@@ -87,6 +87,9 @@ pub trait ReadRelUoWFactory<RF> {
 }
 
 pub trait WriteRelUoW<RF>: CommandUnitOfWork {
+    /// Read the current relationship list (used by undoable set/move to capture the
+    /// pre-image for a scoped, surgical inverse).
+    fn get_relationship(&self, id: &EntityId, field: &RF) -> Result<Vec<EntityId>>;
     fn set_relationship(
         &self,
         id: &EntityId,

@@ -7,24 +7,25 @@ use direct_access::*;
 fn setup() -> (TestContext, u64) {
     let mut ctx = TestContext::new();
 
-    let root = root_controller::create_orphan(
-        &ctx.db, &ctx.hub, &CreateRootDto::default(),
-    ).unwrap();
+    let root =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
 
     let ws = workspace_controller::create(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &CreateWorkspaceDto::default(),
-        root.id, -1,
-    ).unwrap();
+        root.id,
+        -1,
+    )
+    .unwrap();
 
     (ctx, ws.id)
 }
 
 fn create_project_with(ctx: &mut TestContext, ws_id: u64, dto: CreateProjectDto) -> ProjectDto {
-    project_controller::create(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
-        &dto, ws_id, -1,
-    ).unwrap()
+    project_controller::create(&ctx.db, &ctx.hub, &mut ctx.undo, None, &dto, ws_id, -1).unwrap()
 }
 
 fn default_create_dto(title: &str) -> CreateProjectDto {
@@ -59,11 +60,15 @@ fn test_list_fields_default_empty() {
 #[test]
 fn test_create_with_string_list() {
     let (mut ctx, ws_id) = setup();
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "Strings".into(),
-        labels: vec!["alpha".into(), "beta".into(), "gamma".into()],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "Strings".into(),
+            labels: vec!["alpha".into(), "beta".into(), "gamma".into()],
+            ..Default::default()
+        },
+    );
 
     assert_eq!(proj.labels, vec!["alpha", "beta", "gamma"]);
 
@@ -74,11 +79,15 @@ fn test_create_with_string_list() {
 #[test]
 fn test_create_with_float_list() {
     let (mut ctx, ws_id) = setup();
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "Floats".into(),
-        scores: vec![1.5, 2.7, 3.14],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "Floats".into(),
+            scores: vec![1.5, 2.7, 3.14],
+            ..Default::default()
+        },
+    );
 
     assert_eq!(proj.scores, vec![1.5, 2.7, 3.14]);
 
@@ -92,11 +101,15 @@ fn test_create_with_uuid_list() {
     let u1 = uuid::Uuid::new_v4();
     let u2 = uuid::Uuid::new_v4();
 
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "Uuids".into(),
-        version_ids: vec![u1, u2],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "Uuids".into(),
+            version_ids: vec![u1, u2],
+            ..Default::default()
+        },
+    );
 
     assert_eq!(proj.version_ids, vec![u1, u2]);
 
@@ -110,11 +123,15 @@ fn test_create_with_datetime_list() {
     let d1 = chrono::Utc::now();
     let d2 = d1 + chrono::Duration::hours(1);
 
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "Dates".into(),
-        milestone_dates: vec![d1, d2],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "Dates".into(),
+            milestone_dates: vec![d1, d2],
+            ..Default::default()
+        },
+    );
 
     assert_eq!(proj.milestone_dates.len(), 2);
 
@@ -125,11 +142,15 @@ fn test_create_with_datetime_list() {
 #[test]
 fn test_create_with_integer_list() {
     let (mut ctx, ws_id) = setup();
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "Ints".into(),
-        participant_counts: vec![10, 20, 30],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "Ints".into(),
+            participant_counts: vec![10, 20, 30],
+            ..Default::default()
+        },
+    );
 
     assert_eq!(proj.participant_counts, vec![10, 20, 30]);
 
@@ -140,11 +161,15 @@ fn test_create_with_integer_list() {
 #[test]
 fn test_create_with_uinteger_list() {
     let (mut ctx, ws_id) = setup();
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "Uints".into(),
-        retry_counts: vec![100, 200],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "Uints".into(),
+            retry_counts: vec![100, 200],
+            ..Default::default()
+        },
+    );
 
     assert_eq!(proj.retry_counts, vec![100, 200]);
 
@@ -155,11 +180,15 @@ fn test_create_with_uinteger_list() {
 #[test]
 fn test_create_with_bool_list() {
     let (mut ctx, ws_id) = setup();
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "Bools".into(),
-        feature_flags: vec![true, false, true],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "Bools".into(),
+            feature_flags: vec![true, false, true],
+            ..Default::default()
+        },
+    );
 
     assert_eq!(proj.feature_flags, vec![true, false, true]);
 
@@ -179,7 +208,8 @@ fn test_update_string_list() {
     let dto = project_controller::get(&ctx.db, &proj.id).unwrap().unwrap();
     let mut update_dto: UpdateProjectDto = dto.into();
     update_dto.labels = vec!["x".into(), "y".into()];
-    let updated = project_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
+    let updated =
+        project_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
     assert_eq!(updated.labels, vec!["x", "y"]);
 
     let fetched = project_controller::get(&ctx.db, &proj.id).unwrap().unwrap();
@@ -189,18 +219,23 @@ fn test_update_string_list() {
 #[test]
 fn test_update_list_to_empty() {
     let (mut ctx, ws_id) = setup();
-    let proj = create_project_with(&mut ctx, ws_id, CreateProjectDto {
-        title: "ClearMe".into(),
-        labels: vec!["a".into(), "b".into()],
-        ..Default::default()
-    });
+    let proj = create_project_with(
+        &mut ctx,
+        ws_id,
+        CreateProjectDto {
+            title: "ClearMe".into(),
+            labels: vec!["a".into(), "b".into()],
+            ..Default::default()
+        },
+    );
 
     let dto = project_controller::get(&ctx.db, &proj.id).unwrap().unwrap();
     assert_eq!(dto.labels.len(), 2);
 
     let mut update_dto: UpdateProjectDto = dto.into();
     update_dto.labels = vec![];
-    let updated = project_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
+    let updated =
+        project_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
     assert!(updated.labels.is_empty());
 
     let fetched = project_controller::get(&ctx.db, &proj.id).unwrap().unwrap();
@@ -225,7 +260,8 @@ fn test_update_all_list_types() {
     update_dto.retry_counts = vec![7];
     update_dto.feature_flags = vec![false, true];
 
-    let updated = project_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
+    let updated =
+        project_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
     assert_eq!(updated.labels, vec!["updated"]);
     assert_eq!(updated.scores, vec![9.9]);
     assert_eq!(updated.version_ids, vec![u1]);

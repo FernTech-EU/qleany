@@ -28,7 +28,11 @@ fn test_create_project() {
         ..Default::default()
     };
     let _ = project_management::project_management_controller::create_project(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None, &dto,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
+        &dto,
     );
 }
 
@@ -55,9 +59,8 @@ fn test_archive_project() {
         reason: Some("Done".into()),
         archive_priority: Some(1),
     };
-    let _ = project_management::project_management_controller::archive_project(
-        &ctx.db, &ctx.hub, &dto,
-    );
+    let _ =
+        project_management::project_management_controller::archive_project(&ctx.db, &ctx.hub, &dto);
 }
 
 #[test]
@@ -71,8 +74,12 @@ fn test_export_project_data_starts() {
         project_uuid: None,
     };
     let operation_id = project_management::project_management_controller::export_project_data(
-        &ctx.db, &ctx.hub, &mut long_op, &dto,
-    ).unwrap();
+        &ctx.db,
+        &ctx.hub,
+        &mut long_op,
+        &dto,
+    )
+    .unwrap();
     assert!(!operation_id.is_empty());
 }
 
@@ -86,8 +93,12 @@ fn test_import_project_starts() {
         tag_names: vec!["imported".into()],
     };
     let operation_id = project_management::project_management_controller::import_project(
-        &ctx.db, &ctx.hub, &mut long_op, &dto,
-    ).unwrap();
+        &ctx.db,
+        &ctx.hub,
+        &mut long_op,
+        &dto,
+    )
+    .unwrap();
     assert!(!operation_id.is_empty());
 }
 
@@ -107,9 +118,8 @@ fn test_batch_assign_tasks() {
         team_member_id: member,
         difficulty_filter: None,
     };
-    let _ = task_management::task_management_controller::batch_assign_tasks(
-        &ctx.db, &ctx.hub, &dto,
-    );
+    let _ =
+        task_management::task_management_controller::batch_assign_tasks(&ctx.db, &ctx.hub, &dto);
 }
 
 #[test]
@@ -118,9 +128,7 @@ fn test_get_task_summary() {
     let (mut ctx, s) = setup();
     helpers::create_task(&mut ctx, s.project_id, "Summary1");
 
-    let _ = task_management::task_management_controller::get_task_summary(
-        &ctx.db, &ctx.hub,
-    );
+    let _ = task_management::task_management_controller::get_task_summary(&ctx.db, &ctx.hub);
 }
 
 #[test]
@@ -129,7 +137,5 @@ fn test_cleanup_completed() {
     let (mut ctx, s) = setup();
     helpers::create_task(&mut ctx, s.project_id, "Cleanup1");
 
-    let _ = task_management::task_management_controller::cleanup_completed(
-        &ctx.db, &ctx.hub,
-    );
+    let _ = task_management::task_management_controller::cleanup_completed(&ctx.db, &ctx.hub);
 }

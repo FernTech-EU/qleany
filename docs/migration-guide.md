@@ -4,6 +4,66 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v1.7.8 to v1.8.0 — Scoped undo restore (cross-trunk isolation)
+
+**Qleany version**: v1.8.0
+
+### What changed
+
+Undo/redo `snapshot`/`restore` are now **scoped to the subtree they target** instead of
+operating on the whole store. The v1.7.0 switch to `im::HashMap` made snapshot *capture* O(1)
+by cloning the entire store, but `restore` then *replaced* the entire store — so undoing an
+operation on one undoable trunk reverted every other trunk and all non-undoable data (the
+savepoint behaviour the snapshot system was meant to replace). This release fixes that while
+keeping the O(1) capture.
+
+- `snapshot(ids)` still clones the whole store (O(1), `im` structural sharing) but now also
+  records `root_ids`. `EntityTreeSnapshot` gains a `pub root_ids: Vec<EntityId>` field.
+- `restore` walks the subtree rooted at `root_ids` (strong relationships only), in both the
+  snapshot and the live store, and reconciles **only that subtree**: in-scope rows and the
+  forward junctions they own are restored wholesale; the subtree's placement in *external*
+  owners/referrers is reconciled surgically (membership only, preserving sibling edits made on
+  other undo stacks); entities created after the snapshot are deleted. New generated methods:
+  `Repository::restore_subtree` and per-backward-relationship `reconcile_backref_*`.
+  `HashMapStoreSnapshot`'s table/junction fields are now `pub(crate)`.
+- `UndoableCreateUseCase` no longer wholesale-resets the owner relationship on undo/redo (it
+  relied on `set_relationships_in_owner`, which clobbered concurrent siblings); it now leans on
+  the already-surgical `remove_multi` plus the scoped `restore`.
+- `UndoableSetRelationshipUseCase` / `UndoableMoveRelationshipUseCase` no longer take a
+  whole-store savepoint. They capture the affected junction row's prior value and restore just
+  that row (a surgical inverse). `WriteRelUoW<RF>` gains a `get_relationship` method to read the
+  pre-image.
+
+### Behavioral changes
+
+- **Cross-trunk isolation**: undoing an operation on one undoable trunk no longer reverts other
+  trunks or non-undoable data (settings, caches, etc.). This is the headline fix.
+- **Precise restore events**: restore now emits `Created`/`Updated`/`Removed` for exactly the
+  affected ids (three-way diff of snapshot vs live), instead of a `Created` event for *every*
+  entity in the store. Set/move-relationship undo emits a scoped `Updated` for the touched row
+  instead of a whole-store `AllEvent::Reset`. UIs that relied on the old "everything changed"
+  storm to force a full refresh may need to listen to the precise events.
+- **Performance**: capture stays O(1); restore is now O(subtree) plus an O(n) scan per weak
+  *backward* relationship (only when one exists), instead of an O(store) replace.
+- **Unchanged**: snapshots remain in-memory only (`store_snapshot` is still `#[serde(skip)]`);
+  id counters are still preserved across restore.
+
+### How to upgrade
+
+1. **Regenerate affected files**: `snapshot.rs`, `hashmap_store.rs`, entity repository files
+   (`*_repository.rs`), entity unit-of-work files (`*_units_of_work.rs`), the use-case traits
+   file, and the generated `create.rs`, `set_relationship.rs`, `move_relationship.rs` use cases.
+2. **Custom feature use cases**: no API change. Code following the documented pattern
+   (`self.snap = uow.snapshot(ids); … uow.restore(&snap)` on undo) becomes scoped automatically
+   as long as it passes the correct `ids` — undo no longer reverts unrelated data.
+3. **Hand-written `WriteRelUoW` implementations** (rare): add the new `get_relationship` method
+   (delegate to the entity repository's `get_relationship`).
+4. **If you relied on undo reverting the whole store** (the old behaviour): that no longer
+   happens. For an explicit whole-database rollback, use `create_savepoint` /
+   `restore_to_savepoint` (or `restore_store`) directly — do not route it through undo.
+
+---
+
 ## v1.7.3 to v1.7.4 — Event-hub shutdown via channel wakeup
 
 **Qleany version**: v1.7.4

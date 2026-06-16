@@ -17,15 +17,20 @@ fn setup() -> (TestContext, helpers::Scaffold) {
 fn test_create_with_owner() {
     let (mut ctx, s) = setup();
     let member = team_member_controller::create(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &CreateTeamMemberDto {
             name: "Alice".into(),
             email: "alice@test.com".into(),
             role: common::entities::MemberRole::Developer,
             ..Default::default()
         },
-        s.workspace_id, -1,
-    ).unwrap();
+        s.workspace_id,
+        -1,
+    )
+    .unwrap();
     assert!(member.id > 0);
     assert_eq!(member.name, "Alice");
     assert_eq!(member.email, "alice@test.com");
@@ -36,7 +41,10 @@ fn test_create_with_owner() {
 fn test_create_multiple() {
     let (mut ctx, s) = setup();
     let members = team_member_controller::create_multi(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &[
             CreateTeamMemberDto {
                 name: "Bob".into(),
@@ -51,8 +59,10 @@ fn test_create_multiple() {
                 ..Default::default()
             },
         ],
-        s.workspace_id, -1,
-    ).unwrap();
+        s.workspace_id,
+        -1,
+    )
+    .unwrap();
     assert_eq!(members.len(), 2);
     assert_ne!(members[0].id, members[1].id);
 }
@@ -73,7 +83,11 @@ fn test_get_by_id() {
 #[test]
 fn test_get_non_existent() {
     let (ctx, _) = setup();
-    assert!(team_member_controller::get(&ctx.db, &999999).unwrap().is_none());
+    assert!(
+        team_member_controller::get(&ctx.db, &999999)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
@@ -96,7 +110,9 @@ fn test_update_fields() {
     let mut update_dto: UpdateTeamMemberDto = dto.into();
     update_dto.name = "New".into();
     update_dto.email = "new@test.com".into();
-    let updated = team_member_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
+    let updated =
+        team_member_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto)
+            .unwrap();
     assert_eq!(updated.name, "New");
     assert_eq!(updated.email, "new@test.com");
 }
@@ -108,7 +124,9 @@ fn test_update_enum_role() {
     let dto = team_member_controller::get(&ctx.db, &id).unwrap().unwrap();
     let mut update_dto: UpdateTeamMemberDto = dto.into();
     update_dto.role = common::entities::MemberRole::Manager;
-    let updated = team_member_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
+    let updated =
+        team_member_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto)
+            .unwrap();
     assert_eq!(updated.role, common::entities::MemberRole::Manager);
 }
 
@@ -135,49 +153,68 @@ fn test_set_and_get_department() {
     let cat_id = helpers::create_category(&mut ctx, s.workspace_id, "Engineering");
 
     team_member_controller::set_relationship(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &TeamMemberRelationshipDto {
             id: member_id,
             field: TeamMemberRelationshipField::Department,
             right_ids: vec![cat_id],
         },
-    ).unwrap();
+    )
+    .unwrap();
 
     let rel = team_member_controller::get_relationship(
-        &ctx.db, &member_id, &TeamMemberRelationshipField::Department,
-    ).unwrap();
+        &ctx.db,
+        &member_id,
+        &TeamMemberRelationshipField::Department,
+    )
+    .unwrap();
     assert_eq!(rel, vec![cat_id]);
 }
 
 #[test]
 fn test_change_department() {
     let (mut ctx, s) = setup();
-    let member_id = helpers::create_team_member(&mut ctx, s.workspace_id, "Switch", "switch@test.com");
+    let member_id =
+        helpers::create_team_member(&mut ctx, s.workspace_id, "Switch", "switch@test.com");
     let cat1 = helpers::create_category(&mut ctx, s.workspace_id, "Dept1");
     let cat2 = helpers::create_category(&mut ctx, s.workspace_id, "Dept2");
 
     team_member_controller::set_relationship(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &TeamMemberRelationshipDto {
             id: member_id,
             field: TeamMemberRelationshipField::Department,
             right_ids: vec![cat1],
         },
-    ).unwrap();
+    )
+    .unwrap();
 
     // Change to different department
     team_member_controller::set_relationship(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &TeamMemberRelationshipDto {
             id: member_id,
             field: TeamMemberRelationshipField::Department,
             right_ids: vec![cat2],
         },
-    ).unwrap();
+    )
+    .unwrap();
 
     let rel = team_member_controller::get_relationship(
-        &ctx.db, &member_id, &TeamMemberRelationshipField::Department,
-    ).unwrap();
+        &ctx.db,
+        &member_id,
+        &TeamMemberRelationshipField::Department,
+    )
+    .unwrap();
     assert_eq!(rel, vec![cat2]);
 }
 
@@ -189,24 +226,42 @@ fn test_multiple_members_same_department() {
     let cat = helpers::create_category(&mut ctx, s.workspace_id, "Shared");
 
     team_member_controller::set_relationship(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &TeamMemberRelationshipDto {
-            id: m1, field: TeamMemberRelationshipField::Department, right_ids: vec![cat],
+            id: m1,
+            field: TeamMemberRelationshipField::Department,
+            right_ids: vec![cat],
         },
-    ).unwrap();
+    )
+    .unwrap();
     team_member_controller::set_relationship(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &TeamMemberRelationshipDto {
-            id: m2, field: TeamMemberRelationshipField::Department, right_ids: vec![cat],
+            id: m2,
+            field: TeamMemberRelationshipField::Department,
+            right_ids: vec![cat],
         },
-    ).unwrap();
+    )
+    .unwrap();
 
     let rel1 = team_member_controller::get_relationship(
-        &ctx.db, &m1, &TeamMemberRelationshipField::Department,
-    ).unwrap();
+        &ctx.db,
+        &m1,
+        &TeamMemberRelationshipField::Department,
+    )
+    .unwrap();
     let rel2 = team_member_controller::get_relationship(
-        &ctx.db, &m2, &TeamMemberRelationshipField::Department,
-    ).unwrap();
+        &ctx.db,
+        &m2,
+        &TeamMemberRelationshipField::Department,
+    )
+    .unwrap();
     assert_eq!(rel1, vec![cat]);
     assert_eq!(rel2, vec![cat]);
 }

@@ -138,14 +138,18 @@ impl HashMapStore {
 }
 
 /// Snapshot of the entire store. O(1) to create thanks to im::HashMap structural sharing.
+///
+/// Entity-table and junction fields are `pub(crate)` so the generated per-entity
+/// repositories (same crate) can read the captured rows/junctions during a *scoped*
+/// restore. Counters stay private (restore never touches them — ids stay monotonic).
 #[derive(Debug, Clone)]
 pub struct HashMapStoreSnapshot {
 {%- for eid, ent in s.entities %}
-    {{ ent.snake_name }}s: HashMap<EntityId, {{ ent.pascal_name }}>,
+    pub(crate) {{ ent.snake_name }}s: HashMap<EntityId, {{ ent.pascal_name }}>,
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
-    jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}: HashMap<EntityId, Vec<EntityId>>,
+    pub(crate) jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}: HashMap<EntityId, Vec<EntityId>>,
 {%- endfor %}
 {%- endfor %}
     counters: std::collections::HashMap<String, EntityId>,
@@ -241,6 +245,49 @@ pub(crate) fn junction_move_ids(
     }
     junction_set(junction, *id, remaining.clone());
     remaining
+}
+
+/// Surgically reconcile an external (out-of-scope) junction list during a scoped undo restore.
+///
+/// `live_list` is the current ordered value of an external referrer's junction row; `snap_list`
+/// is the same row at snapshot time; `scope` is the set of subtree ids being restored. Only the
+/// membership/position of `scope` ids is reconciled to match the snapshot — non-scope siblings are
+/// preserved in their current relative order. Scope ids absent from the snapshot are removed
+/// (undo-of-create); scope ids present in the snapshot are re-inserted at their snapshot-relative
+/// position (undo-of-remove). This is what keeps undo from clobbering other trunks' edits.
+pub(crate) fn reconcile_backref_list(
+    live_list: &[EntityId],
+    snap_list: &[EntityId],
+    scope: &std::collections::HashSet<EntityId>,
+) -> Vec<EntityId> {
+    // Scope ids that should be present after restore, in snapshot order.
+    let snap_members: Vec<EntityId> =
+        snap_list.iter().copied().filter(|x| scope.contains(x)).collect();
+    let snap_member_set: std::collections::HashSet<EntityId> =
+        snap_members.iter().copied().collect();
+
+    // Start from the live list, dropping only scope ids that are NOT in the snapshot.
+    let mut work: Vec<EntityId> = live_list
+        .iter()
+        .copied()
+        .filter(|x| !(scope.contains(x) && !snap_member_set.contains(x)))
+        .collect();
+
+    // Re-insert missing scope ids at their snapshot-relative position (count of snapshot
+    // predecessors that survive in `work`), so they return next to their original neighbours.
+    for id in &snap_members {
+        if work.contains(id) {
+            continue;
+        }
+        let snap_idx = snap_list.iter().position(|x| x == id).unwrap_or(0);
+        let pos = snap_list[..snap_idx]
+            .iter()
+            .filter(|x| work.contains(x))
+            .count()
+            .min(work.len());
+        work.insert(pos, *id);
+    }
+    work
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

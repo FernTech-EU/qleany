@@ -18,14 +18,19 @@ fn setup() -> (TestContext, helpers::Scaffold, u64) {
 fn test_create_with_owner() {
     let (mut ctx, _, task_id) = setup();
     let comment = comment_controller::create(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &CreateCommentDto {
             text: "Hello world".into(),
             author_name: "Alice".into(),
             ..Default::default()
         },
-        task_id, -1,
-    ).unwrap();
+        task_id,
+        -1,
+    )
+    .unwrap();
     assert!(comment.id > 0);
     assert_eq!(comment.text, "Hello world");
     assert_eq!(comment.author_name, "Alice");
@@ -35,13 +40,26 @@ fn test_create_with_owner() {
 fn test_create_multiple() {
     let (mut ctx, _, task_id) = setup();
     let comments = comment_controller::create_multi(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
         &[
-            CreateCommentDto { text: "C1".into(), author_name: "A".into(), ..Default::default() },
-            CreateCommentDto { text: "C2".into(), author_name: "B".into(), ..Default::default() },
+            CreateCommentDto {
+                text: "C1".into(),
+                author_name: "A".into(),
+                ..Default::default()
+            },
+            CreateCommentDto {
+                text: "C2".into(),
+                author_name: "B".into(),
+                ..Default::default()
+            },
         ],
-        task_id, -1,
-    ).unwrap();
+        task_id,
+        -1,
+    )
+    .unwrap();
     assert_eq!(comments.len(), 2);
     assert_ne!(comments[0].id, comments[1].id);
 }
@@ -51,14 +69,23 @@ fn test_create_at_index() {
     let (mut ctx, _, task_id) = setup();
     helpers::create_comment(&mut ctx, task_id, "First");
     let inserted = comment_controller::create(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
-        &CreateCommentDto { text: "Inserted".into(), author_name: "A".into(), ..Default::default() },
-        task_id, 0,
-    ).unwrap();
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
+        &CreateCommentDto {
+            text: "Inserted".into(),
+            author_name: "A".into(),
+            ..Default::default()
+        },
+        task_id,
+        0,
+    )
+    .unwrap();
 
-    let rel = task_controller::get_relationship(
-        &ctx.db, &task_id, &TaskRelationshipField::Comments,
-    ).unwrap();
+    let rel =
+        task_controller::get_relationship(&ctx.db, &task_id, &TaskRelationshipField::Comments)
+            .unwrap();
     assert_eq!(rel[0], inserted.id);
 }
 
@@ -101,7 +128,8 @@ fn test_update_fields() {
     let mut update_dto: UpdateCommentDto = dto.into();
     update_dto.text = "New".into();
     update_dto.author_name = "Bob".into();
-    let updated = comment_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
+    let updated =
+        comment_controller::update(&ctx.db, &ctx.hub, &mut ctx.undo, None, &update_dto).unwrap();
     assert_eq!(updated.text, "New");
     assert_eq!(updated.author_name, "Bob");
 
@@ -143,8 +171,8 @@ fn test_comments_ordered_in_parent() {
     let c2 = helpers::create_comment(&mut ctx, task_id, "Second");
     let c3 = helpers::create_comment(&mut ctx, task_id, "Third");
 
-    let rel = task_controller::get_relationship(
-        &ctx.db, &task_id, &TaskRelationshipField::Comments,
-    ).unwrap();
+    let rel =
+        task_controller::get_relationship(&ctx.db, &task_id, &TaskRelationshipField::Comments)
+            .unwrap();
     assert_eq!(rel, vec![c1, c2, c3]);
 }

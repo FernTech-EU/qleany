@@ -6,7 +6,8 @@ use direct_access::*;
 #[test]
 fn test_create_orphan() {
     let ctx = TestContext::new();
-    let root = root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
+    let root =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
     assert!(root.id > 0);
 }
 
@@ -26,7 +27,8 @@ fn test_create_multiple_orphans() {
 #[test]
 fn test_get_by_id() {
     let ctx = TestContext::new();
-    let created = root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
+    let created =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
     let fetched = root_controller::get(&ctx.db, &created.id).unwrap();
     assert!(fetched.is_some());
     assert_eq!(fetched.unwrap().id, created.id);
@@ -50,7 +52,8 @@ fn test_get_all() {
 #[test]
 fn test_update() {
     let ctx = TestContext::new();
-    let created = root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
+    let created =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
     let created_id = created.id;
     let update_dto: UpdateRootDto = created.into();
     let updated = root_controller::update(&ctx.db, &ctx.hub, &update_dto).unwrap();
@@ -62,7 +65,8 @@ fn test_update() {
 #[test]
 fn test_remove() {
     let ctx = TestContext::new();
-    let created = root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
+    let created =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
     root_controller::remove(&ctx.db, &ctx.hub, &created.id).unwrap();
     let fetched = root_controller::get(&ctx.db, &created.id).unwrap();
     assert!(fetched.is_none());
@@ -78,46 +82,70 @@ fn test_remove_non_existent() {
 #[test]
 fn test_set_and_get_relationship_workspace() {
     let mut ctx = TestContext::new();
-    let root = root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
+    let root =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
     let ws = workspace_controller::create(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
-        &CreateWorkspaceDto::default(), root.id, -1,
-    ).unwrap();
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
+        &CreateWorkspaceDto::default(),
+        root.id,
+        -1,
+    )
+    .unwrap();
 
-    let rel_ids = root_controller::get_relationship(
-        &ctx.db, &root.id, &RootRelationshipField::Workspace,
-    ).unwrap();
+    let rel_ids =
+        root_controller::get_relationship(&ctx.db, &root.id, &RootRelationshipField::Workspace)
+            .unwrap();
     assert_eq!(rel_ids, vec![ws.id]);
 }
 
 #[test]
 fn test_set_and_get_relationship_system() {
     let ctx = TestContext::new();
-    let root = root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
+    let root =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
 
     let sys = system_controller::create(
-        &ctx.db, &ctx.hub,
-        &CreateSystemDto { name: "TestSys".into(), ..Default::default() },
-        root.id, -1,
-    ).unwrap();
+        &ctx.db,
+        &ctx.hub,
+        &CreateSystemDto {
+            name: "TestSys".into(),
+            ..Default::default()
+        },
+        root.id,
+        -1,
+    )
+    .unwrap();
 
-    let rel_ids = root_controller::get_relationship(
-        &ctx.db, &root.id, &RootRelationshipField::System,
-    ).unwrap();
+    let rel_ids =
+        root_controller::get_relationship(&ctx.db, &root.id, &RootRelationshipField::System)
+            .unwrap();
     assert_eq!(rel_ids, vec![sys.id]);
 }
 
 #[test]
 fn test_get_relationship_count() {
     let mut ctx = TestContext::new();
-    let root = root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
+    let root =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
     workspace_controller::create(
-        &ctx.db, &ctx.hub, &mut ctx.undo, None,
-        &CreateWorkspaceDto::default(), root.id, -1,
-    ).unwrap();
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
+        &CreateWorkspaceDto::default(),
+        root.id,
+        -1,
+    )
+    .unwrap();
 
     let count = root_controller::get_relationship_count(
-        &ctx.db, &root.id, &RootRelationshipField::Workspace,
-    ).unwrap();
+        &ctx.db,
+        &root.id,
+        &RootRelationshipField::Workspace,
+    )
+    .unwrap();
     assert_eq!(count, 1);
 }

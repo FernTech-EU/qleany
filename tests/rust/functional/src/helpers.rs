@@ -35,12 +35,8 @@ pub struct Scaffold {
 /// Build Root → Workspace → Project → ProjectSettings.
 pub fn create_scaffold(ctx: &mut TestContext) -> Scaffold {
     // Root (non-undoable orphan)
-    let root = root_controller::create_orphan(
-        &ctx.db,
-        &ctx.hub,
-        &CreateRootDto::default(),
-    )
-    .unwrap();
+    let root =
+        root_controller::create_orphan(&ctx.db, &ctx.hub, &CreateRootDto::default()).unwrap();
 
     // Workspace (undoable, child of Root)
     let ws = workspace_controller::create(
@@ -124,11 +120,28 @@ pub fn create_task(ctx: &mut TestContext, project_id: u64, title: &str) -> u64 {
         title: title.into(),
         ..Default::default()
     };
+    let task =
+        task_controller::create(&ctx.db, &ctx.hub, &mut ctx.undo, None, &dto, project_id, -1)
+            .unwrap();
+    task.id
+}
+
+/// Create a task under the given project on a specific undo stack.
+pub fn create_task_on_stack(
+    ctx: &mut TestContext,
+    project_id: u64,
+    title: &str,
+    stack_id: Option<u64>,
+) -> u64 {
+    let dto = CreateTaskDto {
+        title: title.into(),
+        ..Default::default()
+    };
     let task = task_controller::create(
         &ctx.db,
         &ctx.hub,
         &mut ctx.undo,
-        None,
+        stack_id,
         &dto,
         project_id,
         -1,
@@ -144,16 +157,8 @@ pub fn create_tag(ctx: &mut TestContext, ws_id: u64, name: &str, color: &str) ->
         color: color.into(),
         ..Default::default()
     };
-    let tag = tag_controller::create(
-        &ctx.db,
-        &ctx.hub,
-        &mut ctx.undo,
-        None,
-        &dto,
-        ws_id,
-        -1,
-    )
-    .unwrap();
+    let tag =
+        tag_controller::create(&ctx.db, &ctx.hub, &mut ctx.undo, None, &dto, ws_id, -1).unwrap();
     tag.id
 }
 
@@ -164,16 +169,9 @@ pub fn create_comment(ctx: &mut TestContext, task_id: u64, text: &str) -> u64 {
         author_name: "Tester".into(),
         ..Default::default()
     };
-    let comment = comment_controller::create(
-        &ctx.db,
-        &ctx.hub,
-        &mut ctx.undo,
-        None,
-        &dto,
-        task_id,
-        -1,
-    )
-    .unwrap();
+    let comment =
+        comment_controller::create(&ctx.db, &ctx.hub, &mut ctx.undo, None, &dto, task_id, -1)
+            .unwrap();
     comment.id
 }
 
@@ -183,16 +181,8 @@ pub fn create_category(ctx: &mut TestContext, ws_id: u64, name: &str) -> u64 {
         name: name.into(),
         ..Default::default()
     };
-    let cat = category_controller::create(
-        &ctx.db,
-        &ctx.hub,
-        &mut ctx.undo,
-        None,
-        &dto,
-        ws_id,
-        -1,
-    )
-    .unwrap();
+    let cat = category_controller::create(&ctx.db, &ctx.hub, &mut ctx.undo, None, &dto, ws_id, -1)
+        .unwrap();
     cat.id
 }
 
@@ -219,15 +209,8 @@ pub fn create_team_member(ctx: &mut TestContext, ws_id: u64, name: &str, email: 
         email: email.into(),
         ..Default::default()
     };
-    let member = team_member_controller::create(
-        &ctx.db,
-        &ctx.hub,
-        &mut ctx.undo,
-        None,
-        &dto,
-        ws_id,
-        -1,
-    )
-    .unwrap();
+    let member =
+        team_member_controller::create(&ctx.db, &ctx.hub, &mut ctx.undo, None, &dto, ws_id, -1)
+            .unwrap();
     member.id
 }
