@@ -9,3 +9,4 @@ pub mod {{ e.snake_name }}_commands;
 pub mod {{ f.snake_name }}_commands;
 {%- endfor %}
 pub mod undo_redo_commands;
+pub mod long_operation_commands;

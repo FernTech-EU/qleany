@@ -9,6 +9,7 @@ common = { workspace = true }
 direct_access = { workspace = true }
 project_management = { workspace = true }
 task_management = { workspace = true }
+frontend = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }

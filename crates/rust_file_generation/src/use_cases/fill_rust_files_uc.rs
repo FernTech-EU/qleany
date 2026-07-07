@@ -663,6 +663,18 @@ impl FillRustFilesUseCase {
                 f.all_entities = true;
             }
 
+            {
+                let f = b.add(
+                    "long_operation_commands.rs",
+                    relative_path_commands.clone(),
+                    "frontend",
+                    "frontend_long_operation_commands",
+                    FileNature::Infrastructure,
+                );
+                f.all_features = true;
+                f.all_entities = true;
+            }
+
             for entity in &entities {
                 let entity = entity.as_ref().ok_or(anyhow!("Entity not found"))?;
                 if entity.only_for_heritage {

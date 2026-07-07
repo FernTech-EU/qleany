@@ -20,6 +20,9 @@ mod test_project_list_fields;
 mod test_undo_redo;
 
 #[cfg(test)]
+mod test_long_operation;
+
+#[cfg(test)]
 mod test_project_controller;
 
 #[cfg(test)]

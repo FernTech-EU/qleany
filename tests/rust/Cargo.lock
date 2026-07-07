@@ -205,6 +205,7 @@ dependencies = [
  "chrono",
  "full-rust-app-common",
  "full-rust-app-direct-access",
+ "full-rust-app-frontend",
  "full-rust-app-project-management",
  "full-rust-app-task-management",
  "serde_json",
