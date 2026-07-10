@@ -59,17 +59,56 @@ impl HashMapStore {
         }
     }
 
-    /// Restore from a savepoint snapshot.
-    pub fn restore(&self, snap: &HashMapStoreSnapshot) {
+    /// Atomically snapshot the whole store into a fresh, isolated `HashMapStore`.
+    ///
+    /// Unlike [`snapshot`], this holds a read guard on **every** table, junction,
+    /// and the counters *simultaneously* while cloning, so the result is a single
+    /// consistent point-in-time view — no torn read across tables. Guards are
+    /// acquired in the struct's declared field order (all entity tables, then all
+    /// junctions, then counters), which matches the table-before-junction order
+    /// every writer uses (see `remove_multi`), so it cannot deadlock against an
+    /// in-flight write. O(1) clones (im::HashMap structural sharing); the lock
+    /// hold is just the clones. The returned store carries no savepoints and is
+    /// meant to back a read-only (frozen) transaction.
+    pub fn freeze(&self) -> HashMapStore {
+        // Acquire ALL read guards first (declared order), then clone under that
+        // one consistent lock set.
 {%- for eid, ent in s.entities %}
-        *self.{{ ent.snake_name }}s.write().unwrap() = snap.{{ ent.snake_name }}s.clone();
+        let g_{{ ent.snake_name }}s = read_or_recover(&self.{{ ent.snake_name }}s);
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
-        *self.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}.write().unwrap() = snap.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}.clone();
+        let g_jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }} = read_or_recover(&self.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }});
 {%- endfor %}
 {%- endfor %}
-        *self.counters.write().unwrap() = snap.counters.clone();
+        let g_counters = read_or_recover(&self.counters);
+
+        HashMapStore {
+{%- for eid, ent in s.entities %}
+            {{ ent.snake_name }}s: RwLock::new(g_{{ ent.snake_name }}s.clone()),
+{%- endfor %}
+{%- for eid, ent in s.entities %}
+{%- for rid, r in s.entities[eid].forward_relationships %}
+            jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}: RwLock::new(g_jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}.clone()),
+{%- endfor %}
+{%- endfor %}
+            counters: RwLock::new(g_counters.clone()),
+            savepoints: RwLock::new(std::collections::HashMap::new()),
+            next_savepoint_id: RwLock::new(0),
+        }
+    }
+
+    /// Restore from a savepoint snapshot.
+    pub fn restore(&self, snap: &HashMapStoreSnapshot) {
+{%- for eid, ent in s.entities %}
+        *write_or_recover(&self.{{ ent.snake_name }}s) = snap.{{ ent.snake_name }}s.clone();
+{%- endfor %}
+{%- for eid, ent in s.entities %}
+{%- for rid, r in s.entities[eid].forward_relationships %}
+        *write_or_recover(&self.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}) = snap.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}.clone();
+{%- endfor %}
+{%- endfor %}
+        *write_or_recover(&self.counters) = snap.counters.clone();
     }
 
     /// Create a savepoint by snapshotting the entire store. Returns a savepoint id.
@@ -85,10 +124,7 @@ impl HashMapStore {
 
     /// Restore the store to a previously created savepoint.
     pub fn restore_savepoint(&self, savepoint_id: u64) {
-        let snap = self
-            .savepoints
-            .read()
-            .unwrap()
+        let snap = read_or_recover(&self.savepoints)
             .get(&savepoint_id)
             .expect("savepoint not found")
             .clone();
@@ -113,11 +149,11 @@ impl HashMapStore {
     /// Used for undo snapshots where IDs must remain monotonically increasing.
     pub fn restore_without_counters(&self, snap: &HashMapStoreSnapshot) {
 {%- for eid, ent in s.entities %}
-        *self.{{ ent.snake_name }}s.write().unwrap() = snap.{{ ent.snake_name }}s.clone();
+        *write_or_recover(&self.{{ ent.snake_name }}s) = snap.{{ ent.snake_name }}s.clone();
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
-        *self.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}.write().unwrap() = snap.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}.clone();
+        *write_or_recover(&self.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}) = snap.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ ent.snake_name }}_{{ r.field_snake_name }}.clone();
 {%- endfor %}
 {%- endfor %}
         // counters intentionally NOT restored — IDs must remain monotonically increasing
@@ -168,6 +204,19 @@ impl StoreSnapshotTrait for HashMapStoreSnapshot {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Acquire a read guard, recovering the inner value if the lock was poisoned by
+/// a panic elsewhere. Used on the store's **restore/snapshot** paths so a single
+/// table poisoned by an unrelated panic can't escalate a rollback (the Drop-time
+/// `restore_savepoint`) into a process-wide double-panic abort.
+pub(crate) fn read_or_recover<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {
+    lock.read().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Write-guard counterpart of [`read_or_recover`].
+pub(crate) fn write_or_recover<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
+    lock.write().unwrap_or_else(|e| e.into_inner())
+}
 
 pub(crate) fn delete_from_backward_junction(
     junction: &RwLock<HashMap<EntityId, Vec<EntityId>>>,
