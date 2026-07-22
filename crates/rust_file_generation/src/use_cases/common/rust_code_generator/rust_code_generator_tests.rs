@@ -863,7 +863,7 @@ fn fn_bodies<'a>(code: &'a str, name: &str) -> Vec<&'a str> {
         from = start + sig.len();
 
         let open = match code[start..].find(['{', ';']) {
-            Some(off) if code[start..].as_bytes()[off] == b'{' => start + off,
+            Some(off) if code.as_bytes()[start + off] == b'{' => start + off,
             _ => continue, // declaration, not a definition
         };
 
