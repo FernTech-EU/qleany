@@ -372,9 +372,13 @@ impl<'a> {{ s.entities[e].pascal_name }}TableRO for {{ s.entities[e].pascal_name
 use super::{{ s.entities[e].snake_name }}_repository::{{ s.entities[e].pascal_name }}Table;
 use super::{{ s.entities[e].snake_name }}_repository::{{ s.entities[e].pascal_name }}TableRO;
 use crate::entities::{{ s.entities[e].pascal_name }};
-use crate::error::RepositoryError;
-use crate::types::EntityId;
 
+{#- `RepositoryError` and `EntityId` are deliberately NOT imported here.
+    `impl_leaf_entity_table!` names both through fully-qualified `$crate::`
+    paths, so a `use` for either is dead — and `-D warnings` turns that into a
+    build failure in any project whose CI gates on clippy. The relationship
+    branch above does import them, because its expanded code names them
+    unqualified. -#}
 crate::impl_leaf_entity_table!(
     entity: {{ s.entities[e].pascal_name }},
     entity_name: "{{ s.entities[e].snake_name }}",
