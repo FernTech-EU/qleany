@@ -318,6 +318,47 @@ mod tests {
         }
     }
 
+    /// Drive a contending `acquire` and return its failure message, whichever
+    /// way this build reports failure.
+    ///
+    /// `acquire` deliberately fails *differently* per profile — it panics
+    /// under `debug_assertions` and returns an error without them — while
+    /// producing an identical message either way. Tests that hard-coded the
+    /// debug behaviour would fail the moment a generated app ran
+    /// `cargo test --release`, and since this module is generated, a
+    /// downstream developer could not fix those tests without their edit
+    /// being erased by the next `qleany generate`. Absorbing the difference
+    /// here keeps the suite green under both profiles and, more usefully,
+    /// means the release path is genuinely exercised rather than assumed.
+    fn contention_message(db: &DbContext, site: &'static str) -> String {
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            WriteTransactionGuard::acquire(db, site)
+        }));
+
+        match outcome {
+            Err(payload) => {
+                assert!(
+                    cfg!(debug_assertions),
+                    "`{site}`: a release build must report contention by returning an \
+                     error, not by panicking"
+                );
+                panic_message(payload.as_ref())
+            }
+            Ok(Err(error)) => {
+                assert!(
+                    !cfg!(debug_assertions),
+                    "`{site}`: a debug build must report contention by panicking loudly \
+                     at the offending call site, not by returning an error"
+                );
+                format!("{error}")
+            }
+            Ok(Ok(_)) => panic!(
+                "`{site}` acquired a slot that was already held — the guard did not fire \
+                 at all, which is the exact silent failure it exists to prevent"
+            ),
+        }
+    }
+
     #[test]
     fn sequential_acquire_release_never_trips_the_guard() {
         let db = ctx();
@@ -347,18 +388,16 @@ mod tests {
     }
 
     #[test]
-    fn a_second_concurrent_acquire_on_the_same_store_panics() {
+    fn a_second_concurrent_acquire_on_the_same_store_fails() {
         let db = ctx();
         let _first = WriteTransactionGuard::acquire(&db, "first").unwrap();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            WriteTransactionGuard::acquire(&db, "second")
-        }));
+        let message = contention_message(&db, "second");
         assert!(
-            result.is_err(),
-            "a concurrent second acquire on the same store must panic in a debug build"
+            message.contains("second"),
+            "message must name the call site that was refused: {message}"
         );
 
-        // The panic must not have poisoned the global map for anyone else: a
+        // The failure must not have poisoned the global map for anyone else: a
         // fresh, unrelated store can still acquire immediately afterward.
         let other = ctx();
         assert!(WriteTransactionGuard::acquire(&other, "other").is_ok());
@@ -407,16 +446,12 @@ mod tests {
         let db_for_thread = db.clone();
         let handle = std::thread::Builder::new()
             .name("contender-thread".to_string())
-            .spawn(move || {
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    WriteTransactionGuard::acquire(&db_for_thread, "second_site_xyz")
-                }))
-            })
+            .spawn(move || contention_message(&db_for_thread, "second_site_xyz"))
             .unwrap();
 
-        let result = handle.join().expect("spawned thread must not itself panic outside catch_unwind");
-        let payload = result.expect_err("a genuine cross-thread contention must panic in a debug build");
-        let message = panic_message(payload.as_ref());
+        let message = handle
+            .join()
+            .expect("the contending thread must fail through the guard, not around it");
 
         assert!(
             message.contains("first_site_xyz"),
@@ -442,12 +477,7 @@ mod tests {
         let db = ctx();
         let _first = WriteTransactionGuard::acquire(&db, "begin_transaction_first_call").unwrap();
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            WriteTransactionGuard::acquire(&db, "begin_transaction_retry")
-        }));
-        let payload =
-            result.expect_err("re-acquiring on the same thread while still held must still fail");
-        let message = panic_message(payload.as_ref());
+        let message = contention_message(&db, "begin_transaction_retry");
 
         assert!(
             message.contains("begin_transaction_first_call"),

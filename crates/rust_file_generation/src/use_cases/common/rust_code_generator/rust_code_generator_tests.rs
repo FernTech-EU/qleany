@@ -849,6 +849,88 @@ fn assert_is_valid_rust(code: &str, label: &str) {
     );
 }
 
+/// Collect the brace-matched body of every `fn {name}(...)` in `code` that
+/// actually has one. Trait *declarations* (`fn commit(&mut self) -> Result<()>;`)
+/// are skipped: their signature is closed by `;` before any `{`, and following
+/// the next `{` would otherwise splice in an unrelated function's body.
+fn fn_bodies<'a>(code: &'a str, name: &str) -> Vec<&'a str> {
+    let sig = format!("fn {name}(");
+    let mut bodies = Vec::new();
+    let mut from = 0;
+
+    while let Some(rel) = code[from..].find(&sig) {
+        let start = from + rel;
+        from = start + sig.len();
+
+        let open = match code[start..].find(['{', ';']) {
+            Some(off) if code[start..].as_bytes()[off] == b'{' => start + off,
+            _ => continue, // declaration, not a definition
+        };
+
+        let mut depth = 0usize;
+        for (i, c) in code[open..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        bodies.push(&code[open..open + i + 1]);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    bodies
+}
+
+/// Assert that every generated `commit`/`rollback` releases the write guard
+/// only *after* the transaction itself is finished.
+///
+/// This is deliberately an ordering assertion, not another `contains` check.
+/// The `contains` assertions in the tests below would pass just as happily if
+/// `write_guard = None` were moved *above* the `commit()?`/`rollback()?` call
+/// — which would hand the store's slot to a second writer while the first
+/// transaction's whole-store savepoint is still live, reopening precisely the
+/// silent-rollback window `common::database::write_guard` exists to close.
+/// Since the guard cannot detect its own misuse from inside the generated
+/// app, the ordering has to be pinned here, at the point of generation.
+fn assert_guard_outlives_the_transaction(code: &str, release_stmt: &str, label: &str) {
+    let mut checked = 0;
+
+    for (fn_name, terminator) in [("commit", ".commit()?"), ("rollback", ".rollback()?")] {
+        for body in fn_bodies(code, fn_name) {
+            if !body.contains(release_stmt) {
+                continue;
+            }
+
+            let release_at = body.find(release_stmt).unwrap();
+            let terminator_at = body.find(terminator).unwrap_or_else(|| {
+                panic!("{label}: `{fn_name}` releases the write guard but never calls `{terminator}`:\n{body}")
+            });
+
+            assert!(
+                terminator_at < release_at,
+                "{label}: `{fn_name}` releases the write guard BEFORE finishing the \
+                 transaction. The guard must outlive the transaction's whole-store \
+                 savepoint — releasing it first lets a second writer in while that \
+                 savepoint is still live, which is the silent-rollback bug the guard \
+                 exists to prevent.\n{body}"
+            );
+            checked += 1;
+        }
+    }
+
+    assert_eq!(
+        checked, 2,
+        "{label}: expected the write guard to be released in exactly one `commit` and one \
+         `rollback`, found {checked} such fn(s) — the guard wiring moved, and this test no \
+         longer checks what it claims to"
+    );
+}
+
 fn base_global() -> Global {
     Global {
         id: 3,
@@ -1043,6 +1125,11 @@ fn feature_use_case_uow_write_template_wires_the_guard_and_renders_valid_rust() 
     assert!(code.contains("write_guard: Option<WriteTransactionGuard>"));
     assert!(code.contains(r#"WriteTransactionGuard::acquire(&self.context, "do_thing")"#));
     assert!(code.contains("self.write_guard = None;"));
+    assert_guard_outlives_the_transaction(
+        &code,
+        "self.write_guard = None;",
+        "feature_use_case_uow (write, non-long-operation)",
+    );
     assert_is_valid_rust(&code, "feature_use_case_uow (write, non-long-operation)");
 }
 
@@ -1064,6 +1151,11 @@ fn feature_use_case_uow_long_operation_write_template_wires_the_guard_and_render
     assert!(code.contains("write_guard: Mutex<Option<WriteTransactionGuard>>"));
     assert!(code.contains(r#"WriteTransactionGuard::acquire(&self.context, "do_thing")"#));
     assert!(code.contains("*self.write_guard.lock().unwrap() = None;"));
+    assert_guard_outlives_the_transaction(
+        &code,
+        "*self.write_guard.lock().unwrap() = None;",
+        "feature_use_case_uow (write, long-operation)",
+    );
     assert_is_valid_rust(&code, "feature_use_case_uow (write, long-operation)");
 }
 
@@ -1226,5 +1318,10 @@ fn entity_units_of_work_template_wires_the_guard_and_renders_valid_rust() {
     // alongside the guard wiring.
     assert!(code.contains("impl use_cases::OwnedWriteUoW for ThingWriteUoW"));
     assert!(code.contains("impl use_cases::WriteRelUoW<ThingRelationshipField> for ThingWriteUoW"));
+    assert_guard_outlives_the_transaction(
+        &code,
+        "self.write_guard = None;",
+        "entity_units_of_work",
+    );
     assert_is_valid_rust(&code, "entity_units_of_work");
 }
