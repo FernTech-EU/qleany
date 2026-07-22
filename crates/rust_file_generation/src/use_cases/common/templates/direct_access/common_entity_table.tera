@@ -15,9 +15,18 @@
 // Entity WITH forward relationships — explicit struct implementation
 // ═══════════════════════════════════════════════════════════════════════
 
+{#- `delete_from_backward_junction` is only emitted below when the entity HAS
+    backward relationships, so importing it unconditionally leaves a dead `use`
+    on any trunk entity (Root, which nothing points at) — an unused-import
+    error under `-D warnings`. v1.8 emitted this list conditionally; v1.9 lost
+    the condition. -#}
+{%- if s.entities[e].backward_relationships | length > 0 %}
 use crate::database::hashmap_store::{
     HashMapStore, delete_from_backward_junction, junction_get, junction_remove, junction_set,
 };
+{%- else %}
+use crate::database::hashmap_store::{HashMapStore, junction_get, junction_remove, junction_set};
+{%- endif %}
 use crate::entities::{{ s.entities[e].pascal_name }};
 use crate::error::RepositoryError;
 use crate::types::EntityId;
