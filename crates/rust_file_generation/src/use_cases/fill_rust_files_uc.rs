@@ -232,6 +232,14 @@ impl FillRustFilesUseCase {
         );
 
         b.add(
+            "write_guard.rs",
+            format!("{}/common/src/database/", prefix),
+            "base",
+            "write_guard",
+            FileNature::Infrastructure,
+        );
+
+        b.add(
             "snapshot.rs",
             format!("{}/common/src/", prefix),
             "base",

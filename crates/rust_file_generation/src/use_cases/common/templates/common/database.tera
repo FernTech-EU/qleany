@@ -3,6 +3,7 @@
 pub mod db_context;
 pub mod hashmap_store;
 pub mod transactions;
+pub mod write_guard;
 use anyhow::Result;
 
 pub trait CommandUnitOfWork {

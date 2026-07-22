@@ -6,6 +6,7 @@ use common::entities::{{ s.entities[e].pascal_name }};
 use anyhow::{Ok, Result};
 use common::database::{db_context::DbContext, transactions::Transaction};
 use common::database::{CommandUnitOfWork, QueryUnitOfWork};
+use common::database::write_guard::WriteTransactionGuard;
 use common::direct_access::repository_factory;
 use common::direct_access::use_cases;
 use common::event::{AllEvent, DirectAccessEntity, Event, EventBuffer, EventHub, Origin};
@@ -25,6 +26,10 @@ use common::direct_access::{{ s.entities[e].snake_name }}::{{ s.entities[e].pasc
 pub struct {{ s.entities[e].pascal_name }}WriteUoW {
     context: DbContext,
     transaction: Option<Transaction>,
+    // RAII: acquired in `begin_transaction`, released via `commit`/`rollback`
+    // clearing it — see `common::database::write_guard`'s module doc for the
+    // single-write-transaction-per-store invariant this enforces.
+    write_guard: Option<WriteTransactionGuard>,
     event_hub: Arc<EventHub>,
     event_buffer: RefCell<EventBuffer>,
 }
@@ -34,6 +39,7 @@ impl {{ s.entities[e].pascal_name }}WriteUoW {
         {{ s.entities[e].pascal_name }}WriteUoW {
             context: db_context.clone(),
             transaction: None,
+            write_guard: None,
             event_hub: event_hub.clone(),
             event_buffer: RefCell::new(EventBuffer::new()),
         }
@@ -42,6 +48,9 @@ impl {{ s.entities[e].pascal_name }}WriteUoW {
 
 impl CommandUnitOfWork for {{ s.entities[e].pascal_name }}WriteUoW {
     fn begin_transaction(&mut self) -> Result<()> {
+        // Acquire BEFORE the write transaction itself — see
+        // `common::database::write_guard`'s module doc.
+        self.write_guard = Some(WriteTransactionGuard::acquire(&self.context, "{{ s.entities[e].snake_name }}_direct_write")?);
         self.transaction = Some(Transaction::begin_write_transaction(&self.context)?);
         self.event_buffer.get_mut().begin_buffering();
         Ok(())
@@ -51,6 +60,7 @@ impl CommandUnitOfWork for {{ s.entities[e].pascal_name }}WriteUoW {
         self.transaction.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .commit()?;
+        self.write_guard = None;
         for event in self.event_buffer.get_mut().flush() {
             self.event_hub.send_event(event);
         }
@@ -61,6 +71,7 @@ impl CommandUnitOfWork for {{ s.entities[e].pascal_name }}WriteUoW {
         self.transaction.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .rollback()?;
+        self.write_guard = None;
         self.event_buffer.get_mut().discard();
         Ok(())
     }

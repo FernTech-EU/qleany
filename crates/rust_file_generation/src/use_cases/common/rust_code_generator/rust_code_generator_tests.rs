@@ -2,14 +2,15 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use super::{GenerationOps, GenerationReadOps, SnapshotBuilder};
+use super::{GenerationOps, GenerationReadOps, GenerationSnapshot, SnapshotBuilder};
 use anyhow::Result;
 use common::database::QueryUnitOfWork;
 use common::direct_access::root::RootRelationshipField;
 use common::direct_access::workspace::WorkspaceRelationshipField;
 use common::entities::{
-    Dto, DtoField, Entity, Feature, Field, FieldRelationshipType, FieldType, File, FileStatus,
-    Global, Relationship, RelationshipType, Root, System, UseCase, UserInterface, Workspace,
+    Cardinality, Direction, Dto, DtoField, Entity, Feature, Field, FieldRelationshipType,
+    FieldType, File, FileStatus, Global, Relationship, RelationshipType, Root, Strength, System,
+    UseCase, UserInterface, Workspace,
 };
 use common::types::EntityId;
 use std::collections::HashMap;
@@ -804,4 +805,426 @@ fn for_file_various_combinations_generate_expected_items() {
     assert!(snap.use_cases.contains_key(&100));
     // entities from UC plus explicitly provided entity
     assert!(snap.entities.contains_key(&1) && snap.entities.contains_key(&2));
+}
+
+// ── WriteTransactionGuard generation ────────────────────────────────────────
+//
+// The following tests exercise the real Tera rendering pipeline (not just
+// snapshot assembly) for the templates that wire the generated
+// `write_guard` module into every write-transaction call site. They assert
+// both on the presence of the guard wiring and on the syntactic validity of
+// the rendered Rust (via `rustfmt`, which fails to parse malformed code).
+
+/// Pipe `code` through `rustfmt` (stdin -> stdout) purely to validate that it
+/// parses as syntactically correct Rust. Panics with rustfmt's stderr if it
+/// doesn't.
+fn assert_is_valid_rust(code: &str, label: &str) {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut child = Command::new("rustfmt")
+        .arg("--edition")
+        .arg("2024")
+        .arg("--emit")
+        .arg("stdout")
+        .arg("--quiet")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to spawn rustfmt — required to validate generated template output");
+
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(code.as_bytes())
+        .expect("failed to write to rustfmt stdin");
+
+    let output = child.wait_with_output().expect("failed to wait on rustfmt");
+    assert!(
+        output.status.success(),
+        "{label}: rendered template output is not valid Rust:\n{}\n\n--- rendered code ---\n{code}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn base_global() -> Global {
+    Global {
+        id: 3,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        application_name: "App".into(),
+        language: "rust".into(),
+        organisation_name: "Org".into(),
+        organisation_domain: "org.com".into(),
+        prefix_path: "".into(),
+    }
+}
+
+fn base_user_interface() -> UserInterface {
+    UserInterface {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        rust_cli: false,
+        rust_slint: false,
+        cpp_qt_qtwidgets: false,
+        cpp_qt_qtquick: false,
+        rust_ios: false,
+        rust_android: false,
+    }
+}
+
+#[test]
+fn write_guard_template_renders_valid_rust() {
+    let mut uow = DummyGenerationReadOps::new();
+    let file = File {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "write_guard.rs".into(),
+        relative_path: "common/src/database/".into(),
+        group: "base".into(),
+        template_name: "write_guard".into(),
+        generated_code: None,
+        status: FileStatus::New,
+        nature: Default::default(),
+        feature: None,
+        all_features: false,
+        entity: None,
+        all_entities: false,
+        use_case: None,
+        all_use_cases: false,
+        field: None,
+    };
+    uow.files.insert(1, file);
+    uow.globals.insert(3, base_global());
+    uow.user_interfaces.insert(1, base_user_interface());
+    let workspace = Workspace {
+        id: 2,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        manifest_absolute_path: "".into(),
+        global: 3,
+        entities: vec![],
+        features: vec![],
+        user_interface: 1,
+    };
+    uow.workspaces.insert(2, workspace);
+    let system = System {
+        id: 4,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        version: "1.0.0".into(),
+        files: vec![],
+    };
+    uow.systems.insert(4, system);
+    let root = Root {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        workspace: Some(2),
+        system: Some(4),
+    };
+    uow.roots.insert(1, root);
+
+    let (snap, _) = SnapshotBuilder::for_file_id(&uow, 1, &Vec::new()).expect("snapshot");
+    let code = super::generate_code_with_snapshot(&snap).expect("render write_guard");
+    assert!(code.contains("pub struct WriteTransactionGuard"));
+    assert!(code.contains("pub fn acquire("));
+    assert_is_valid_rust(&code, "write_guard");
+}
+
+/// Build a minimal snapshot for a feature use-case UoW file (`feature_use_case_uow`
+/// template), toggling `read_only`/`long_operation` to hit every branch.
+fn feature_use_case_uow_snapshot(read_only: bool, long_operation: bool) -> GenerationSnapshot {
+    let mut uow = DummyGenerationReadOps::new();
+
+    let ent = Entity {
+        id: 300,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "Thing".into(),
+        only_for_heritage: false,
+        inherits_from: None,
+        single_model: true,
+        fields: vec![],
+        relationships: vec![],
+        undoable: true,
+    };
+    uow.entities.insert(300, ent);
+
+    let uc = UseCase {
+        id: 100,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "DoThing".into(),
+        entities: vec![300],
+        undoable: !read_only,
+        read_only,
+        long_operation,
+        dto_in: None,
+        dto_out: None,
+    };
+    uow.use_cases.insert(100, uc);
+
+    let feature = Feature {
+        id: 10,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "Doing".into(),
+        use_cases: vec![100],
+    };
+    uow.features.insert(10, feature);
+
+    let file = File {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "do_thing_uow.rs".into(),
+        relative_path: "src/units_of_work/".into(),
+        group: "feature".into(),
+        template_name: "feature_use_case_uow".into(),
+        generated_code: None,
+        status: FileStatus::New,
+        nature: Default::default(),
+        feature: Some(10),
+        all_features: false,
+        entity: None,
+        all_entities: false,
+        use_case: Some(100),
+        all_use_cases: false,
+        field: None,
+    };
+    uow.files.insert(1, file);
+
+    uow.globals.insert(3, base_global());
+    uow.user_interfaces.insert(1, base_user_interface());
+    let workspace = Workspace {
+        id: 2,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        manifest_absolute_path: "".into(),
+        global: 3,
+        entities: vec![300],
+        features: vec![10],
+        user_interface: 1,
+    };
+    uow.workspaces.insert(2, workspace);
+    uow.workspace_features.insert(2, vec![10]);
+    uow.workspace_entities.insert(2, vec![300]);
+    let system = System {
+        id: 4,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        version: "1.0.0".into(),
+        files: vec![],
+    };
+    uow.systems.insert(4, system);
+    let root = Root {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        workspace: Some(2),
+        system: Some(4),
+    };
+    uow.roots.insert(1, root);
+
+    SnapshotBuilder::for_file_id(&uow, 1, &Vec::new())
+        .expect("snapshot")
+        .0
+}
+
+#[test]
+fn feature_use_case_uow_write_template_wires_the_guard_and_renders_valid_rust() {
+    let snap = feature_use_case_uow_snapshot(false, false);
+    let code = super::generate_code_with_snapshot(&snap).expect("render feature_use_case_uow");
+    assert!(code.contains("write_guard: Option<WriteTransactionGuard>"));
+    assert!(code.contains(r#"WriteTransactionGuard::acquire(&self.context, "do_thing")"#));
+    assert!(code.contains("self.write_guard = None;"));
+    assert_is_valid_rust(&code, "feature_use_case_uow (write, non-long-operation)");
+}
+
+#[test]
+fn feature_use_case_uow_read_only_template_has_no_guard_and_renders_valid_rust() {
+    let snap = feature_use_case_uow_snapshot(true, false);
+    let code = super::generate_code_with_snapshot(&snap).expect("render feature_use_case_uow");
+    assert!(!code.contains("WriteTransactionGuard"));
+    assert_is_valid_rust(
+        &code,
+        "feature_use_case_uow (read-only, non-long-operation)",
+    );
+}
+
+#[test]
+fn feature_use_case_uow_long_operation_write_template_wires_the_guard_and_renders_valid_rust() {
+    let snap = feature_use_case_uow_snapshot(false, true);
+    let code = super::generate_code_with_snapshot(&snap).expect("render feature_use_case_uow");
+    assert!(code.contains("write_guard: Mutex<Option<WriteTransactionGuard>>"));
+    assert!(code.contains(r#"WriteTransactionGuard::acquire(&self.context, "do_thing")"#));
+    assert!(code.contains("*self.write_guard.lock().unwrap() = None;"));
+    assert_is_valid_rust(&code, "feature_use_case_uow (write, long-operation)");
+}
+
+#[test]
+fn feature_use_case_uow_long_operation_read_only_template_has_no_guard_and_renders_valid_rust() {
+    let snap = feature_use_case_uow_snapshot(true, true);
+    let code = super::generate_code_with_snapshot(&snap).expect("render feature_use_case_uow");
+    assert!(!code.contains("WriteTransactionGuard"));
+    assert_is_valid_rust(&code, "feature_use_case_uow (read-only, long-operation)");
+}
+
+/// Build a minimal snapshot for an entity's `entity_units_of_work` file, with
+/// an owner (exercises `OwnedWriteUoW`) and a forward relationship (exercises
+/// `WriteRelUoW`) so the write-guard wiring is checked alongside the richest
+/// generated shape.
+fn entity_units_of_work_snapshot() -> GenerationSnapshot {
+    let mut uow = DummyGenerationReadOps::new();
+
+    let owner = Entity {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "Folder".into(),
+        only_for_heritage: false,
+        inherits_from: None,
+        single_model: false,
+        fields: vec![],
+        relationships: vec![900],
+        undoable: true,
+    };
+    let child = Entity {
+        id: 2,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "Thing".into(),
+        only_for_heritage: false,
+        inherits_from: None,
+        single_model: false,
+        fields: vec![],
+        relationships: vec![900, 901],
+        undoable: true,
+    };
+    let tag = Entity {
+        id: 3,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "Tag".into(),
+        only_for_heritage: false,
+        inherits_from: None,
+        single_model: false,
+        fields: vec![],
+        relationships: vec![],
+        undoable: true,
+    };
+    uow.entities.insert(1, owner);
+    uow.entities.insert(2, child);
+    uow.entities.insert(3, tag);
+
+    // Owner relationship: Folder strongly owns Thing.
+    let rel_owner = Relationship {
+        id: 900,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        left_entity: Some(1),
+        right_entity: Some(2),
+        field_name: "Things".into(),
+        relationship_type: RelationshipType::OneToMany,
+        strength: Strength::Strong,
+        direction: Direction::Forward,
+        cardinality: Cardinality::ZeroOrMore,
+        order: None,
+    };
+    uow.relationships.insert(900, rel_owner);
+
+    // Thing's own forward relationship (weak, many-to-many to Tag) so
+    // `forward_relationships` is non-empty for Thing itself, exercising
+    // `WriteRelUoW`.
+    let rel_forward = Relationship {
+        id: 901,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        left_entity: Some(2),
+        right_entity: Some(3),
+        field_name: "Tags".into(),
+        relationship_type: RelationshipType::ManyToMany,
+        strength: Strength::Weak,
+        direction: Direction::Forward,
+        cardinality: Cardinality::ZeroOrMore,
+        order: None,
+    };
+    uow.relationships.insert(901, rel_forward);
+
+    let file = File {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: "units_of_work.rs".into(),
+        relative_path: "src/thing/".into(),
+        group: "entities".into(),
+        template_name: "entity_units_of_work".into(),
+        generated_code: None,
+        status: FileStatus::New,
+        nature: Default::default(),
+        feature: None,
+        all_features: false,
+        entity: Some(2),
+        all_entities: false,
+        use_case: None,
+        all_use_cases: false,
+        field: None,
+    };
+    uow.files.insert(1, file);
+
+    uow.globals.insert(3, base_global());
+    uow.user_interfaces.insert(1, base_user_interface());
+    let workspace = Workspace {
+        id: 2,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        manifest_absolute_path: "".into(),
+        global: 3,
+        entities: vec![1, 2],
+        features: vec![],
+        user_interface: 1,
+    };
+    uow.workspaces.insert(2, workspace);
+    uow.workspace_entities.insert(2, vec![1, 2]);
+    let system = System {
+        id: 4,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        version: "1.0.0".into(),
+        files: vec![],
+    };
+    uow.systems.insert(4, system);
+    let root = Root {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        workspace: Some(2),
+        system: Some(4),
+    };
+    uow.roots.insert(1, root);
+
+    SnapshotBuilder::for_file_id(&uow, 1, &Vec::new())
+        .expect("snapshot")
+        .0
+}
+
+#[test]
+fn entity_units_of_work_template_wires_the_guard_and_renders_valid_rust() {
+    let snap = entity_units_of_work_snapshot();
+    let code = super::generate_code_with_snapshot(&snap).expect("render entity_units_of_work");
+    assert!(code.contains("write_guard: Option<WriteTransactionGuard>"));
+    assert!(
+        code.contains(r#"WriteTransactionGuard::acquire(&self.context, "thing_direct_write")"#)
+    );
+    assert!(code.contains("self.write_guard = None;"));
+    // Sanity: the richer trait impls (owned + relationship) are still present
+    // alongside the guard wiring.
+    assert!(code.contains("impl use_cases::OwnedWriteUoW for ThingWriteUoW"));
+    assert!(code.contains("impl use_cases::WriteRelUoW<ThingRelationshipField> for ThingWriteUoW"));
+    assert_is_valid_rust(&code, "entity_units_of_work");
 }

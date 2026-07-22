@@ -29,6 +29,7 @@ use common::event::{Event, EventHub, Origin};
 {%- else %}
 use std::sync::Arc;
 use common::database::CommandUnitOfWork;
+use common::database::write_guard::WriteTransactionGuard;
 use common::event::{AllEvent, DirectAccessEntity, Event, EventBuffer, EventHub, Origin};
 {%- endif %}
 use common::event::{{ f.pascal_name }}Event::{{ uc.pascal_name }};
@@ -43,6 +44,10 @@ pub struct {{ uc.pascal_name }}UnitOfWork {
     transaction: Mutex<Option<Transaction>>,
     event_hub: Arc<EventHub>,
 {%- if not uc.inner.read_only %}
+    // RAII: acquired in `begin_transaction`, released via `commit`/`rollback`
+    // clearing it — see `common::database::write_guard`'s module doc for the
+    // single-write-transaction-per-store invariant this enforces.
+    write_guard: Mutex<Option<WriteTransactionGuard>>,
     event_buffer: Mutex<EventBuffer>,
 {%- endif %}
 }
@@ -126,6 +131,7 @@ impl {{ uc.pascal_name }}UnitOfWork {
         {{ uc.pascal_name }}UnitOfWork {
             context: db_context.clone(),
             transaction: Mutex::new(None),
+            write_guard: Mutex::new(None),
             event_hub: event_hub.clone(),
             event_buffer: Mutex::new(EventBuffer::new()),
         }
@@ -134,6 +140,9 @@ impl {{ uc.pascal_name }}UnitOfWork {
 
 impl CommandUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
     fn begin_transaction(&mut self) -> Result<()> {
+        // Acquire BEFORE the write transaction itself — see
+        // `common::database::write_guard`'s module doc.
+        *self.write_guard.lock().unwrap() = Some(WriteTransactionGuard::acquire(&self.context, "{{ uc.snake_name }}")?);
         let mut transaction = self.transaction.lock().unwrap();
         *transaction = Some(Transaction::begin_write_transaction(&self.context)?);
         self.event_buffer.lock().unwrap().begin_buffering();
@@ -146,6 +155,7 @@ impl CommandUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .commit()?;
         drop(transaction); // release lock before flushing events
+        *self.write_guard.lock().unwrap() = None;
         for event in self.event_buffer.lock().unwrap().flush() {
             self.event_hub.send_event(event);
         }
@@ -158,6 +168,7 @@ impl CommandUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .rollback()?;
         drop(transaction);
+        *self.write_guard.lock().unwrap() = None;
         self.event_buffer.lock().unwrap().discard();
         Ok(())
     }
@@ -264,6 +275,7 @@ use std::cell::RefCell;
 use std::sync::Arc;
 {%- else %}
 use common::database::CommandUnitOfWork;
+use common::database::write_guard::WriteTransactionGuard;
 use common::event::{AllEvent, DirectAccessEntity, Event, EventBuffer, EventHub, Origin};
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -360,6 +372,10 @@ impl {{ uc.pascal_name }}UnitOfWorkFactoryTrait for {{ uc.pascal_name }}UnitOfWo
 pub struct {{ uc.pascal_name }}UnitOfWork {
     context: DbContext,
     transaction: Option<Transaction>,
+    // RAII: acquired in `begin_transaction`, released via `commit`/`rollback`
+    // clearing it — see `common::database::write_guard`'s module doc for the
+    // single-write-transaction-per-store invariant this enforces.
+    write_guard: Option<WriteTransactionGuard>,
     event_hub: Arc<EventHub>,
     event_buffer: RefCell<EventBuffer>,
 }
@@ -369,6 +385,7 @@ impl {{ uc.pascal_name }}UnitOfWork {
         {{ uc.pascal_name }}UnitOfWork {
             context: db_context.clone(),
             transaction: None,
+            write_guard: None,
             event_hub: event_hub.clone(),
             event_buffer: RefCell::new(EventBuffer::new()),
         }
@@ -377,6 +394,9 @@ impl {{ uc.pascal_name }}UnitOfWork {
 
 impl CommandUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
     fn begin_transaction(&mut self) -> Result<()> {
+        // Acquire BEFORE the write transaction itself — see
+        // `common::database::write_guard`'s module doc.
+        self.write_guard = Some(WriteTransactionGuard::acquire(&self.context, "{{ uc.snake_name }}")?);
         self.transaction = Some(Transaction::begin_write_transaction(&self.context)?);
         self.event_buffer.get_mut().begin_buffering();
         Ok(())
@@ -386,6 +406,7 @@ impl CommandUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
         self.transaction.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .commit()?;
+        self.write_guard = None;
         for event in self.event_buffer.get_mut().flush() {
             self.event_hub.send_event(event);
         }
@@ -396,6 +417,7 @@ impl CommandUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
         self.transaction.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .rollback()?;
+        self.write_guard = None;
         self.event_buffer.get_mut().discard();
         Ok(())
     }
