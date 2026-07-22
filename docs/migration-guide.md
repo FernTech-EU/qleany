@@ -4,6 +4,121 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v1.8.0 to v1.9.0 — Concurrency hardening: write guard, frozen reads, blocking waits
+
+**Qleany version**: v1.9.0
+
+### What changed
+
+This release closes several gaps that only appear once an application runs more than one
+thing at a time — a second project opened in the same process, a long operation reading on a
+background thread while the UI thread writes, or a caller that needs a long operation's
+result. None of them change the manifest schema.
+
+**Single-write-transaction guard (new generated file).** `Transaction::begin_write_transaction`
+takes a *whole-store* savepoint, and `rollback`/`Drop` restore it wholesale. That is correct
+for one writer, and silently wrong for two: a second write transaction opened concurrently on
+the same store would roll back to a savepoint taken before the first one's edits existed,
+erasing them with no error and no event. Nothing enforced the assumption. A new
+`crates/common/src/database/write_guard.rs` emits a `WriteTransactionGuard` — RAII, keyed per
+store by `Arc` pointer identity, recording the holding thread and call site. Every generated
+write unit of work now acquires it as the first statement of `begin_transaction` and releases
+it on `commit`/`rollback`, so a new entity or use case picks the guard up the moment it is
+generated. It is generated unconditionally — there is no manifest flag to opt out of an
+invariant the generated transaction layer already depends on.
+
+**Blocking waits for long operations.** `LongOperationManager` spawned a thread per operation
+and stored its result but exposed no way to block until that happened, so callers polled on a
+timer — putting a sleep-interval floor under every call however trivial the work. New
+`OperationCompletion` (a `Mutex<HashSet<String>>` + `Condvar`) with
+`LongOperationManager::completion_signal()` and `wait_for_operation(id, timeout)`. Each worker
+publishes its id **last** — after storing the result, emitting the event and writing the final
+status — so a woken waiter always observes a fully-settled operation.
+
+**Frozen read transactions.** `HashMapStore::freeze()` captures an atomic, isolated view of
+the store (O(1) — it holds every table lock for one instant and clones `im::HashMap` handles),
+and `Transaction::begin_frozen_read_transaction` reads through it. Intended for long-operation
+readers that walk the entity tree on a background thread while the UI thread keeps writing.
+
+**Panic safety and lock-poison recovery.** `LongOperation::execute()` is wrapped in
+`catch_unwind`, so a panicking operation is reported `Failed` instead of being left stuck
+`Running` forever. The store's restore paths use new poison-tolerant `read_or_recover` /
+`write_or_recover` helpers that call `clear_poison()`, so recovery is permanent rather than
+one-shot and a poisoned table lock can no longer turn a `Drop`-time rollback into a
+double-panic.
+
+**Cross-cutting long-operation commands (new generated file).** The feature-agnostic surface
+of `LongOperationManager` — everything that needs only an operation id — had no home and was
+hand-written per project. `crates/frontend/src/commands/long_operation_commands.rs` is now
+generated (modeled on `undo_redo_commands.rs`) and listed in `commands.rs`, exposing
+`cancel_operation`, `get_operation_status` / `_progress` / `_result`, `is_operation_finished`,
+`list_operations`, `get_operations_summary` and `cleanup_finished_operations`.
+
+**Rolled-back transactions no longer leak their savepoint.** `rollback()` and the `Drop` safety
+net now `discard_savepoint` after restoring, instead of holding a whole-store snapshot alive
+for the process's lifetime.
+
+### Behavioral changes
+
+- **A latent double-writer bug now fails loudly.** This is the one to plan for. If your app
+  ever opened two write transactions on one store concurrently, it previously "worked" while
+  silently corrupting data on rollback; it now **panics in debug builds and returns an error in
+  release builds**. The message names both parties — the holding thread and call site, and the
+  refused one — and distinguishes a genuine second writer from a same-thread re-entrant or
+  retried `begin_transaction`. Treat a new panic here as the guard reporting a real
+  pre-existing bug, not as a regression introduced by upgrading.
+- **Unrelated stores never contend.** The guard is keyed per store, not process-wide, so tests
+  that build a fresh `DbContext` per `#[test]` and run concurrently under `cargo test` do not
+  trip each other. No test-only carve-out is needed.
+- **Long-operation waits cost nothing.** Replacing a 50 ms polling loop removes the per-call
+  sleep floor entirely — a loop over 40 trivial operations that spent ~4 s sleeping now returns
+  as fast as the work itself.
+- **A panicking long operation is now observable.** It settles as `Failed` and emits its event;
+  previously it was left `Running` and any waiter or poller hung indefinitely.
+- **Frozen reads are opt-in.** Nothing generated calls `begin_frozen_read_transaction` — the
+  default read path still reads the live store. It is a tool for you to wire into a
+  long-operation read unit of work, not a change to existing behaviour.
+- **Frozen reads are atomic w.r.t. themselves, not w.r.t. a writer's multi-step cascade.** A
+  write transaction is not one critical section, so a cascading delete/create can leave a brief
+  window into which `freeze` can land and capture a cross-table-torn snapshot. This shrinks the
+  torn-read window from the whole read to a single instant; it does not eliminate it. See the
+  `freeze()` doc comment for the deadlock invariant it relies on.
+
+### How to upgrade
+
+1. **Regenerate affected files**: `database.rs` and the new `database/write_guard.rs`,
+   `hashmap_store.rs`, `transactions.rs`, `long_operation.rs`, every entity unit-of-work file
+   (`*_units_of_work.rs`), every feature use-case unit-of-work file (`*_uow.rs`), and
+   `frontend/src/commands/commands.rs` plus the new
+   `frontend/src/commands/long_operation_commands.rs`.
+2. **Delete hand-written long-operation commands**: if you wrote your own `cancel_operation`,
+   `get_operation_status`, `list_operations` and friends, remove them in favour of the
+   generated `long_operation_commands` module, or you will have two copies to keep in sync.
+3. **Replace polling loops with the completion signal.** Take the handle, release the manager
+   lock, *then* block — waiting while holding that lock stalls every other operation query for
+   the operation's whole duration:
+
+   ```rust,ignore
+   let completion = ctx.long_operation_manager.lock().unwrap().completion_signal();
+   // manager lock released here
+   completion.wait_for(&op_id, Some(Duration::from_secs(30)));
+   let result = ctx.long_operation_manager.lock().unwrap().get_operation_result(&op_id);
+   ```
+
+   `wait_for_operation` on the manager is a convenience for an owner holding it directly — do
+   not call it through a shared lock.
+4. **Hand-written units of work** (rare): if you implemented `CommandUnitOfWork` yourself
+   rather than using the generated one, add the guard by hand — acquire it as the first
+   statement of `begin_transaction` and clear the field in both `commit` and `rollback`, *after*
+   the transaction's own `commit()`/`rollback()` call. Releasing it before the transaction
+   finishes reopens the exact window the guard exists to close.
+5. **If a regenerated app starts panicking in `begin_transaction`**, read the message rather
+   than removing the guard: it names the call site that still holds the store's slot. The usual
+   causes are a second `DbContext`-sharing writer running concurrently, or a unit of work that
+   retried `begin_transaction` without a `commit`/`rollback` in between.
+
+---
+
 ## v1.7.8 to v1.8.0 — Scoped undo restore (cross-trunk isolation)
 
 **Qleany version**: v1.8.0
