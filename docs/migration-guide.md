@@ -4,6 +4,127 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v1.9.0 to v1.10.0 — Generated code stops panicking, and passes `-D warnings`
+
+**Qleany version**: v1.10.0
+
+### What changed
+
+Template-only release: no manifest schema change, no API surface added or removed. Two
+themes, both of which show up the moment you regenerate.
+
+**Panics become errors.** Every unit-of-work method already returned `Result`, yet the
+templates reached for `.expect("Transaction not started")` and
+`.read()/.write()/.lock().unwrap()` throughout — 969 non-test sites in a consuming project of
+moderate size. They landed in the worst place: a use case running as a long operation on a
+background thread, where `LongOperationManager`'s `catch_unwind` reports a failure as `Failed`
+only if the failure is an `Err` and not a process-killing panic.
+
+- `entity_units_of_work` gains a file-local `no_transaction()` helper and propagates a missing
+  transaction with `.ok_or_else(no_transaction)?` instead of `.expect(...)`.
+- `common_entity_repository`, `common_entity_table` and `hashmap_store` take every store lock
+  through `read_or_recover` / `write_or_recover`, which already existed next to them but were
+  wired into only the snapshot paths.
+- The four `frontend_*` templates, `feature_use_case_uow` and `common_event` go through
+  `lock_or_recover` — **now `pub`** (`common::long_operation::lock_or_recover`), where it was
+  private before, and it now calls `clear_poison()` like its `RwLock` siblings instead of
+  leaving the flag set for the next plain `.lock().unwrap()` to trip on.
+- `macros_direct_access` gets both fixes inside its `quote!{}` bodies, which matter most:
+  that code is emitted into *every* consumer's UoW.
+
+Three latent bugs fixed alongside:
+
+- `create` / `update` / `update_with_relationships` `.unwrap()`ed the row `*_multi` had just
+  returned; a broken store contract now fails the one call that noticed, as
+  `RepositoryError::Other`, rather than aborting.
+- `HashMapStore::restore_savepoint` panicked on a missing savepoint, and it is reached from
+  `Transaction`'s **`Drop`-time rollback** — where a panic aborts the process whatever the
+  panic strategy. `UndoRedoManager::end_composite` did the same over a lost undo entry. Both
+  now `debug_assert!` in debug and degrade in release, matching `write_guard::acquire`'s
+  existing shape.
+- The macro crate's `pluralize` indexed `chars().nth(word.len() - 2)` — mixing byte and char
+  counts — and sliced `&word[..len - 1]`. Any non-ASCII entity name ending in `y` panicked at
+  macro-expansion time.
+
+`direct_access_lib` and `macros_lib` now carry
+`#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]`. Both crates generate at
+zero panic paths outside tests; keeping the lint in the template rather than in the consuming
+project is what keeps it that way across regeneration.
+
+**Generated code passes `cargo clippy -- -D warnings`.** Six lints fired in every generated
+project, which is a red CI for any consumer gating on warnings:
+
+- `common_entity_table`, leaf branch: dropped the dead `RepositoryError` and `EntityId`
+  imports (`impl_leaf_entity_table!` names both through fully-qualified `$crate::` paths). Two
+  unused-import errors per leaf entity. The relationship branch keeps them — its expanded code
+  names them unqualified.
+- `common_entity_table` imported `delete_from_backward_junction` unconditionally, leaving a
+  dead `use` on any trunk entity that nothing points at — `Root`, in practice. A v1.9
+  regression: v1.8 emitted the import list conditionally and v1.9 lost the condition.
+- `write_guard`: `assert!(cfg!(debug_assertions), ..)` asserts on a compile-time constant
+  (`assertions_on_constants`), restated as `if !cfg!(..) { panic!(..) }`. The check is what
+  proves the build profile and the observed contention behaviour agree, so it is kept.
+- `hashmap_store` and `common_da_use_cases_create`: nested `if let` blocks became let-chains
+  (`collapsible_if`; generated crates are edition 2024, so they are available), and
+  `!(a && !b)` became `!a || b` (`nonminimal_bool`).
+- `entity_controller`: the undoable `move_relationship` takes eight parameters — six of its own
+  plus the `undo_redo_manager`/`stack_id` pair every undoable controller carries — and now
+  carries `#[allow(clippy::too_many_arguments)]`. Allowed rather than restructured: bundling
+  the arguments into a struct would obscure the correspondence with the use case it forwards to
+  and change the call shape for every consumer, to satisfy a threshold of seven. Emitted only
+  for undoable entities; the non-undoable variant takes six.
+
+### Behavioral changes
+
+- **Out-of-order UoW use now returns an error instead of panicking.** Calling a UoW method
+  before `begin_transaction` yields `Err("unit of work used before begin_transaction …")`.
+  Code that relied on the panic — a test asserting `#[should_panic]`, or a `catch_unwind`
+  around a controller call — sees an `Err` instead.
+- **A panicking long operation is reported, not fatal.** This is the practical payoff: the
+  failure paths above now reach `catch_unwind` as `Err` values, so the operation settles as
+  `Failed` with a message rather than killing the process.
+- **Poison recovery is permanent.** `lock_or_recover` clears the poison flag, so one panicking
+  thread no longer leaves every later plain `.lock().unwrap()` in your own code panicking on
+  the same mutex.
+- **`restore_savepoint` on a missing savepoint is a no-op in release** (the store stays as it
+  is) and a `debug_assert!` failure in debug. Same for `end_composite` on a stack that was
+  removed while a composite was open: the grouped commands stay applied, they just are not
+  undoable as a unit.
+- **Non-ASCII entity names ending in `y` now compile.** Previously the plural form panicked
+  during macro expansion.
+- **No behaviour change from the clippy fixes** — they change the shape of the emitted code,
+  not what it does.
+
+### How to upgrade
+
+1. **Regenerate everything.** This release touches templates across all four groups, so a
+   whole-project regeneration is the cheapest path. If you regenerate selectively, the
+   affected outputs are: `hashmap_store.rs`, `long_operation.rs`, `undo_redo.rs`,
+   `database/write_guard.rs`, `event.rs`, entity table files (`*_table.rs`), entity repository
+   files (`*_repository.rs`), entity unit-of-work files (`*_units_of_work.rs`), entity
+   controllers (`*_controller.rs`), the generated `create.rs` use case, feature use-case UoWs
+   (`*_uow.rs`), the `macros` crate, and `frontend/src/commands/*`.
+2. **Rebuild the macros crate.** `macros_direct_access` changed substantially; a stale build
+   cache will keep emitting the old panicking bodies into your UoWs.
+3. **Hand-written units of work**: replace `self.transaction.lock().unwrap()` with
+   `common::long_operation::lock_or_recover(&self.transaction)`, and
+   `.as_ref().expect("Transaction not started")` with
+   `.as_ref().ok_or_else(|| anyhow!("no transaction is open on this UoW"))?`. Note the `?`
+   needs a `let` binding first — `&expr?` type-checks the `?` against the expectation from `&`,
+   so the inline form asks for `Transaction` and gets `&Transaction`, which `.expect()` had
+   been hiding behind an autoderef coercion.
+4. **Hand-written code holding store locks**: prefer `read_or_recover` / `write_or_recover`
+   (`common::database::hashmap_store`, crate-internal) and the now-public
+   `common::long_operation::lock_or_recover` over `.unwrap()`, so a poisoned lock degrades
+   instead of cascading.
+5. **Tests asserting a panic** on out-of-order UoW use or a missing savepoint must assert on
+   the `Err` / no-op instead.
+6. **If you gate CI on `cargo clippy -- -D warnings`**, it should now pass without per-project
+   `allow`s. Any `#![allow(...)]` you added to a generated crate to work around the six lints
+   above can be removed.
+
+---
+
 ## v1.8.0 to v1.9.0 — Concurrency hardening: write guard, frozen reads, blocking waits
 
 **Qleany version**: v1.9.0
