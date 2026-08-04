@@ -66,13 +66,13 @@ impl {{ uc.pascal_name }}UnitOfWork {
 
 impl QueryUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
     fn begin_transaction(&self) -> Result<()> {
-        let mut transaction = self.transaction.lock().unwrap();
+        let mut transaction = common::long_operation::lock_or_recover(&self.transaction);
         *transaction = Some(Transaction::begin_read_transaction(&self.context)?);
         Ok(())
     }
 
     fn end_transaction(&self) -> Result<()> {
-        let mut transaction = self.transaction.lock().unwrap();
+        let mut transaction = common::long_operation::lock_or_recover(&self.transaction);
         transaction.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .end_read_transaction()?;
@@ -142,52 +142,52 @@ impl CommandUnitOfWork for {{ uc.pascal_name }}UnitOfWork {
     fn begin_transaction(&mut self) -> Result<()> {
         // Acquire BEFORE the write transaction itself — see
         // `common::database::write_guard`'s module doc.
-        *self.write_guard.lock().unwrap() = Some(WriteTransactionGuard::acquire(&self.context, "{{ uc.snake_name }}")?);
-        let mut transaction = self.transaction.lock().unwrap();
+        *common::long_operation::lock_or_recover(&self.write_guard) = Some(WriteTransactionGuard::acquire(&self.context, "{{ uc.snake_name }}")?);
+        let mut transaction = common::long_operation::lock_or_recover(&self.transaction);
         *transaction = Some(Transaction::begin_write_transaction(&self.context)?);
-        self.event_buffer.lock().unwrap().begin_buffering();
+        common::long_operation::lock_or_recover(&self.event_buffer).begin_buffering();
         Ok(())
     }
 
     fn commit(&mut self) -> Result<()> {
-        let mut transaction = self.transaction.lock().unwrap();
+        let mut transaction = common::long_operation::lock_or_recover(&self.transaction);
         transaction.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .commit()?;
         drop(transaction); // release lock before flushing events
-        *self.write_guard.lock().unwrap() = None;
-        for event in self.event_buffer.lock().unwrap().flush() {
+        *common::long_operation::lock_or_recover(&self.write_guard) = None;
+        for event in common::long_operation::lock_or_recover(&self.event_buffer).flush() {
             self.event_hub.send_event(event);
         }
         Ok(())
     }
 
     fn rollback(&mut self) -> Result<()> {
-        let mut transaction = self.transaction.lock().unwrap();
+        let mut transaction = common::long_operation::lock_or_recover(&self.transaction);
         transaction.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .rollback()?;
         drop(transaction);
-        *self.write_guard.lock().unwrap() = None;
-        self.event_buffer.lock().unwrap().discard();
+        *common::long_operation::lock_or_recover(&self.write_guard) = None;
+        common::long_operation::lock_or_recover(&self.event_buffer).discard();
         Ok(())
     }
 
     fn create_savepoint(&self) -> Result<types::Savepoint> {
-        let transaction = self.transaction.lock().unwrap();
+        let transaction = common::long_operation::lock_or_recover(&self.transaction);
         transaction.as_ref()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?
             .create_savepoint()
     }
 
     fn restore_to_savepoint(&mut self, savepoint: types::Savepoint) -> Result<()> {
-        let mut transaction_guard = self.transaction.lock().unwrap();
+        let mut transaction_guard = common::long_operation::lock_or_recover(&self.transaction);
         let mut transaction = transaction_guard.take()
             .ok_or_else(|| anyhow::anyhow!("No active transaction"))?;
         transaction.restore_to_savepoint(savepoint)?;
 
         // Discard buffered events — savepoint restore invalidated them
-        self.event_buffer.lock().unwrap().discard();
+        common::long_operation::lock_or_recover(&self.event_buffer).discard();
 
         // Send Reset immediately (not buffered — UI must refresh now)
         self.event_hub.send_event(Event {

@@ -23,9 +23,12 @@
 {%- if s.entities[e].backward_relationships | length > 0 %}
 use crate::database::hashmap_store::{
     HashMapStore, delete_from_backward_junction, junction_get, junction_remove, junction_set,
+    read_or_recover, write_or_recover,
 };
 {%- else %}
-use crate::database::hashmap_store::{HashMapStore, junction_get, junction_remove, junction_set};
+use crate::database::hashmap_store::{
+    HashMapStore, junction_get, junction_remove, junction_set, read_or_recover, write_or_recover,
+};
 {%- endif %}
 use crate::entities::{{ s.entities[e].pascal_name }};
 use crate::error::RepositoryError;
@@ -87,12 +90,22 @@ impl<'a> {{ s.entities[e].pascal_name }}HashMapTable<'a> {
 impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }}HashMapTable<'a> {
     fn create(&mut self, entity: &{{ s.entities[e].pascal_name }}) -> Result<{{ s.entities[e].pascal_name }}, RepositoryError> {
         self.create_multi(std::slice::from_ref(entity))
-            .map(|v| v.into_iter().next().unwrap())
+            .and_then(|v| {
+                // `create_multi` is contracted to return one row per input, so this
+                // is unreachable — but it used to be `.unwrap()`, and a store that
+                // ever broke that contract would take the whole process down rather
+                // than fail the one call that noticed.
+                v.into_iter().next().ok_or_else(|| {
+                    RepositoryError::Other(anyhow::anyhow!(
+                        "create: the store returned no row for the entity it was given"
+                    ))
+                })
+            })
     }
 
     fn create_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
         let mut created = Vec::with_capacity(entities.len());
-        let mut {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.write().unwrap();
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
 
         for entity in entities {
             let new_entity = if entity.id == EntityId::default() {
@@ -109,7 +122,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
             {%- if f.inner.field_type == "Entity" and f.relationship == "OneToOne" %}
             // one-to-one constraint check: ensure {{ f.snake_name }} is not already referenced by another {{ s.entities[e].snake_name }}
             {
-                let jn = self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }}.read().unwrap();
+                let jn = read_or_recover(&self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }});
                 for (&existing_id, right_ids) in jn.iter() {
                     {%- if f.optional %}
                     if let Some(ref right_id) = new_entity.{{ f.snake_name }} {
@@ -149,7 +162,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn get(&self, id: &EntityId) -> Result<Option<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.read().unwrap();
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
         match {{ s.entities[e].snake_name }}_map.get(id) {
             Some(entity) => {
                 let mut e = entity.clone();
@@ -170,7 +183,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn get_all(&self) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.read().unwrap();
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
         let entries: Vec<{{ s.entities[e].pascal_name }}> = {{ s.entities[e].snake_name }}_map.values().cloned().collect();
         drop({{ s.entities[e].snake_name }}_map);
         let mut result = Vec::with_capacity(entries.len());
@@ -183,12 +196,22 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
 
     fn update(&mut self, entity: &{{ s.entities[e].pascal_name }}) -> Result<{{ s.entities[e].pascal_name }}, RepositoryError> {
         self.update_multi(std::slice::from_ref(entity))
-            .map(|v| v.into_iter().next().unwrap())
+            .and_then(|v| {
+                // `update_multi` is contracted to return one row per input, so this
+                // is unreachable — but it used to be `.unwrap()`, and a store that
+                // ever broke that contract would take the whole process down rather
+                // than fail the one call that noticed.
+                v.into_iter().next().ok_or_else(|| {
+                    RepositoryError::Other(anyhow::anyhow!(
+                        "update: the store returned no row for the entity it was given"
+                    ))
+                })
+            })
     }
 
     // Scalar-only update: writes entity data but does NOT touch junction tables.
     fn update_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let mut {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.write().unwrap();
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
         for entity in entities {
             {{ s.entities[e].snake_name }}_map.insert(entity.id, entity.clone());
         }
@@ -200,17 +223,27 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
 
     fn update_with_relationships(&mut self, entity: &{{ s.entities[e].pascal_name }}) -> Result<{{ s.entities[e].pascal_name }}, RepositoryError> {
         self.update_with_relationships_multi(std::slice::from_ref(entity))
-            .map(|v| v.into_iter().next().unwrap())
+            .and_then(|v| {
+                // `update_with_relationships_multi` is contracted to return one row per input, so this
+                // is unreachable — but it used to be `.unwrap()`, and a store that
+                // ever broke that contract would take the whole process down rather
+                // than fail the one call that noticed.
+                v.into_iter().next().ok_or_else(|| {
+                    RepositoryError::Other(anyhow::anyhow!(
+                        "update_with_relationships: the store returned no row for the entity it was given"
+                    ))
+                })
+            })
     }
 
     fn update_with_relationships_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let mut {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.write().unwrap();
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
         for entity in entities {
             {% for f in s.entities[e].fields %}
             {%- if f.inner.field_type == "Entity" and f.relationship == "OneToOne" %}
             // one-to-one constraint check: ensure {{ f.snake_name }} is not already referenced by another {{ s.entities[e].snake_name }}
             {
-                let jn = self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }}.read().unwrap();
+                let jn = read_or_recover(&self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }});
                 for (&existing_id, right_ids) in jn.iter() {
                     {%- if f.optional %}
                     if let Some(ref right_id) = entity.{{ f.snake_name }} {
@@ -263,7 +296,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn remove_multi(&mut self, ids: &[EntityId]) -> Result<(), RepositoryError> {
-        let mut {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.write().unwrap();
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
         for id in ids {
             {{ s.entities[e].snake_name }}_map.remove(id);
 
@@ -338,7 +371,7 @@ impl<'a> {{ s.entities[e].pascal_name }}HashMapTableRO<'a> {
 
 impl<'a> {{ s.entities[e].pascal_name }}TableRO for {{ s.entities[e].pascal_name }}HashMapTableRO<'a> {
     fn get(&self, id: &EntityId) -> Result<Option<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.read().unwrap();
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
         match {{ s.entities[e].snake_name }}_map.get(id) {
             Some(entity) => {
                 let mut e = entity.clone();
@@ -359,7 +392,7 @@ impl<'a> {{ s.entities[e].pascal_name }}TableRO for {{ s.entities[e].pascal_name
     }
 
     fn get_all(&self) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = self.store.{{ s.entities[e].snake_name }}s.read().unwrap();
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
         let entries: Vec<{{ s.entities[e].pascal_name }}> = {{ s.entities[e].snake_name }}_map.values().cloned().collect();
         drop({{ s.entities[e].snake_name }}_map);
         let mut result = Vec::with_capacity(entries.len());

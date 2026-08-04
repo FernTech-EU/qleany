@@ -48,7 +48,7 @@ impl AppContext {
 
         // Inject event hub into long_operation_manager
         {
-            let mut lom = long_operation_manager.lock().unwrap();
+            let mut lom = common::long_operation::lock_or_recover(&long_operation_manager);
             lom.set_event_hub(&event_hub);
         }
 
@@ -66,7 +66,7 @@ impl AppContext {
     /// second call is a no-op because the sender has already been
     /// taken.
     pub fn shutdown(&self) {
-        let _ = self.shutdown_tx.lock().unwrap().take();
+        let _ = common::long_operation::lock_or_recover(&self.shutdown_tx).take();
     }
 }
 

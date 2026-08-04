@@ -45,7 +45,7 @@ pub fn {{ uc.snake_name }}(
     {{ feature.snake_name }}_controller::{{ uc.snake_name }}(
         &ctx.db_context,
         &ctx.event_hub,
-        &mut ctx.long_operation_manager.lock().unwrap(),
+        &mut common::long_operation::lock_or_recover(&ctx.long_operation_manager),
         {%- if uc.dto_in %}
         dto,
         {%- endif %}
@@ -59,7 +59,7 @@ pub fn get_{{ uc.snake_name }}_progress(
     operation_id: &str,
 ) -> Option<OperationProgress> {
     {{ feature.snake_name }}_controller::get_{{ uc.snake_name }}_progress(
-        &ctx.long_operation_manager.lock().unwrap(),
+        &common::long_operation::lock_or_recover(&ctx.long_operation_manager),
         operation_id,
     )
 }
@@ -70,7 +70,7 @@ pub fn get_{{ uc.snake_name }}_result(
     operation_id: &str,
 ) -> Result<Option<{% if uc.dto_out %}{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}>> {
     {{ feature.snake_name }}_controller::get_{{ uc.snake_name }}_result(
-        &ctx.long_operation_manager.lock().unwrap(),
+        &common::long_operation::lock_or_recover(&ctx.long_operation_manager),
         operation_id,
     )
     .context("getting {{ uc.snake_name }} result")
@@ -88,7 +88,7 @@ pub fn {{ uc.snake_name }}(
     {%- endif %}
 ) -> Result<{% if uc.dto_out %}{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}> {
     {%- if uc.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ feature.snake_name }}_controller::{{ uc.snake_name }}(
         &ctx.db_context,
         &ctx.event_hub,

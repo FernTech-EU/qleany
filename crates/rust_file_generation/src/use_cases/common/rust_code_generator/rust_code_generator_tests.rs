@@ -1150,10 +1150,14 @@ fn feature_use_case_uow_long_operation_write_template_wires_the_guard_and_render
     let code = super::generate_code_with_snapshot(&snap).expect("render feature_use_case_uow");
     assert!(code.contains("write_guard: Mutex<Option<WriteTransactionGuard>>"));
     assert!(code.contains(r#"WriteTransactionGuard::acquire(&self.context, "do_thing")"#));
-    assert!(code.contains("*self.write_guard.lock().unwrap() = None;"));
+    // The thread-safe arm releases the guard through `lock_or_recover`, not a
+    // plain `.lock().unwrap()`: a panic inside a long operation is caught and
+    // reported as `Failed`, and a poisoned guard mutex would otherwise turn that
+    // reported failure into a second, fatal panic on the next use case to run.
+    assert!(code.contains("*common::long_operation::lock_or_recover(&self.write_guard) = None;"));
     assert_guard_outlives_the_transaction(
         &code,
-        "*self.write_guard.lock().unwrap() = None;",
+        "*common::long_operation::lock_or_recover(&self.write_guard) = None;",
         "feature_use_case_uow (write, long-operation)",
     );
     assert_is_valid_rust(&code, "feature_use_case_uow (write, long-operation)");

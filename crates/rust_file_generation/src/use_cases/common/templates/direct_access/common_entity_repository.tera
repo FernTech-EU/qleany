@@ -5,6 +5,12 @@
 use std::fmt::Display;
 
 use crate::{
+    // `*_or_recover` rather than a plain `.read()/.write().unwrap()`: a panic
+    // anywhere under a table's guard poisons that lock for the rest of the
+    // process, and the release profile unwinds, so the poison is reachable in a
+    // shipped build. Recovering (and clearing) it keeps one unrelated failure
+    // from escalating into a second panic on every later access to the store.
+    database::hashmap_store::{read_or_recover, write_or_recover},
     database::hashmap_store::HashMapStoreSnapshot,
     database::transactions::Transaction,
     direct_access::repository_factory,
@@ -488,7 +494,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
         let mut to_update: Vec<EntityId> = Vec::new(); // in both                    -> revert
         let mut to_delete: Vec<EntityId> = Vec::new(); // live only (created after)  -> delete
         {
-            let live = store.{{ s.entities[e].snake_name }}s.read().unwrap();
+            let live = read_or_recover(&store.{{ s.entities[e].snake_name }}s);
             for id in &ids {
                 match (snap.{{ s.entities[e].snake_name }}s.contains_key(id), live.contains_key(id)) {
                     (true, false) => to_create.push(*id),
@@ -511,7 +517,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
                 }
             }
             {
-                let live_jn = store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }}.read().unwrap();
+                let live_jn = read_or_recover(&store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }});
                 for id in &ids {
                     if let Some(list) = live_jn.get(id) {
                         child_ids.extend(list.iter().copied());
@@ -530,7 +536,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
 
         // 2. Entity rows: revert/re-add from snapshot, delete the ones created after it.
         {
-            let mut live = store.{{ s.entities[e].snake_name }}s.write().unwrap();
+            let mut live = write_or_recover(&store.{{ s.entities[e].snake_name }}s);
             for id in to_create.iter().chain(to_update.iter()) {
                 if let Some(row) = snap.{{ s.entities[e].snake_name }}s.get(id) {
                     live.insert(*id, row.clone());
@@ -545,7 +551,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
         //    junction key is in-scope (owned exclusively by this trunk).
 {%- for rid, r in s.entities[e].forward_relationships %}
         {
-            let mut live_jn = store.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ r.field_snake_name }}.write().unwrap();
+            let mut live_jn = write_or_recover(&store.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ r.field_snake_name }});
             for id in to_create.iter().chain(to_update.iter()) {
                 match snap.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ r.field_snake_name }}.get(id) {
                     Some(v) => { live_jn.insert(*id, v.clone()); }
@@ -605,7 +611,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
             }
         }
         {
-            let live_jn = store.jn_{{ s.entities[e].snake_name }}_from_{{ s.entities[r.inner.left_entity].snake_name }}_{{ r.field_snake_name }}.read().unwrap();
+            let live_jn = read_or_recover(&store.jn_{{ s.entities[e].snake_name }}_from_{{ s.entities[r.inner.left_entity].snake_name }}_{{ r.field_snake_name }});
             for (left, rights) in live_jn.iter() {
                 if rights.iter().any(|rid| scope.contains(rid)) {
                     left_keys.insert(*left);
@@ -616,13 +622,13 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
         for left in left_keys {
             let snap_list: Vec<EntityId> = snap.jn_{{ s.entities[e].snake_name }}_from_{{ s.entities[r.inner.left_entity].snake_name }}_{{ r.field_snake_name }}.get(&left).cloned().unwrap_or_default();
             let new_list = {
-                let live_jn = store.jn_{{ s.entities[e].snake_name }}_from_{{ s.entities[r.inner.left_entity].snake_name }}_{{ r.field_snake_name }}.read().unwrap();
+                let live_jn = read_or_recover(&store.jn_{{ s.entities[e].snake_name }}_from_{{ s.entities[r.inner.left_entity].snake_name }}_{{ r.field_snake_name }});
                 let live_list: Vec<EntityId> = live_jn.get(&left).cloned().unwrap_or_default();
                 let reconciled = crate::database::hashmap_store::reconcile_backref_list(&live_list, &snap_list, &scope);
                 if reconciled == live_list { None } else { Some(reconciled) }
             };
             if let Some(reconciled) = new_list {
-                store.jn_{{ s.entities[e].snake_name }}_from_{{ s.entities[r.inner.left_entity].snake_name }}_{{ r.field_snake_name }}.write().unwrap().insert(left, reconciled);
+                write_or_recover(&store.jn_{{ s.entities[e].snake_name }}_from_{{ s.entities[r.inner.left_entity].snake_name }}_{{ r.field_snake_name }}).insert(left, reconciled);
                 event_buffer.push(Event { origin: Origin::DirectAccess(DirectAccessEntity::{{ s.entities[r.inner.left_entity].pascal_name }}(EntityEvent::Updated)), ids: vec![left], data: None });
             }
         }

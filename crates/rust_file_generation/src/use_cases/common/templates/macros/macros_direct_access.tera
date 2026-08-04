@@ -38,10 +38,18 @@ fn pluralize_single(word: &str) -> String {
 
     for &(singular, plural) in irregular {
         if lower == singular {
-            if word.chars().next().unwrap().is_uppercase() {
+            if word.chars().next().is_some_and(char::is_uppercase) {
                 let mut chars = plural.chars();
-                let first = chars.next().unwrap().to_uppercase().to_string();
-                return format!("{}{}", first, chars.as_str());
+                // Every `plural` above is a non-empty literal, so this branch
+                // cannot be taken with an empty iterator — but expressing that
+                // as a `match` costs nothing and keeps the helper panic-free by
+                // construction rather than by reading the table above.
+                match chars.next() {
+                    Some(first) => {
+                        return format!("{}{}", first.to_uppercase(), chars.as_str());
+                    }
+                    None => return plural.to_string(),
+                }
             }
             return plural.to_string();
         }
@@ -95,10 +103,19 @@ fn pluralize_single(word: &str) -> String {
     }
 
     // Words ending in 'y' preceded by a consonant: change 'y' to 'ies'
-    if word.ends_with('y') && word.len() > 1 {
-        let second_last = word.chars().nth(word.len() - 2).unwrap();
-        if !"aeiou".contains(second_last) {
-            return format!("{}ies", &word[..word.len() - 1]);
+    // `word.len()` is BYTES while `chars().nth()` counts CHARS, so the old
+    // `chars().nth(word.len() - 2)` indexed past the end for any word with a
+    // multi-byte character and panicked on the `unwrap` — and `&word[..len-1]`
+    // could split a UTF-8 boundary and panic too. Walking backwards over
+    // `chars` is both correct and shorter.
+    if word.ends_with('y') {
+        let mut chars = word.chars().rev();
+        chars.next(); // the trailing 'y'
+        if let Some(second_last) = chars.next()
+            && !"aeiou".contains(second_last)
+        {
+            let stem: String = word.chars().take(word.chars().count() - 1).collect();
+            return format!("{stem}ies");
         }
     }
 
@@ -161,11 +178,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident = repo.create_orphan(&mut event_buffer, #entity_snake_ident)?;
                             Ok(#entity_snake_ident)
                         }
@@ -179,9 +200,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident = repo.create_orphan(&mut event_buffer, #entity_snake_ident)?;
                             Ok(#entity_snake_ident)
@@ -215,11 +240,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident = repo.create(&mut event_buffer, #entity_snake_ident, owner_id, index)?;
                             Ok(#entity_snake_ident)
                         }
@@ -233,9 +262,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident = repo.create(&mut event_buffer, #entity_snake_ident, owner_id, index)?;
                             Ok(#entity_snake_ident)
@@ -271,11 +304,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident_plural = repo.create_orphan_multi(&mut event_buffer, #entity_snake_ident_plural)?;
                             Ok(#entity_snake_ident_plural)
                         }
@@ -289,9 +326,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident_plural = repo.create_orphan_multi(&mut event_buffer, #entity_snake_ident_plural)?;
                             Ok(#entity_snake_ident_plural)
@@ -327,11 +368,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident_plural = repo.create_multi(&mut event_buffer, #entity_snake_ident_plural, owner_id, index)?;
                             Ok(#entity_snake_ident_plural)
                         }
@@ -345,9 +390,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident_plural = repo.create_multi(&mut event_buffer, #entity_snake_ident_plural, owner_id, index)?;
                             Ok(#entity_snake_ident_plural)
@@ -381,10 +430,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let #entity_snake_ident = repo.get(id)?;
                             Ok(#entity_snake_ident)
                         }
@@ -398,9 +451,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let #entity_snake_ident = repo.get(id)?;
                             Ok(#entity_snake_ident)
                         }
@@ -433,11 +490,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident = repo.update(&mut event_buffer, #entity_snake_ident)?;
                             Ok(#entity_snake_ident)
                         }
@@ -451,9 +512,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident = repo.update(&mut event_buffer, #entity_snake_ident)?;
                             Ok(#entity_snake_ident)
@@ -487,11 +552,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident = repo.update_with_relationships(&mut event_buffer, #entity_snake_ident)?;
                             Ok(#entity_snake_ident)
                         }
@@ -505,9 +574,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident = repo.update_with_relationships(&mut event_buffer, #entity_snake_ident)?;
                             Ok(#entity_snake_ident)
@@ -544,11 +617,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident_plural = repo.update_with_relationships_multi(&mut event_buffer, #entity_snake_ident_plural)?;
                             Ok(#entity_snake_ident_plural)
                         }
@@ -562,9 +639,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident_plural = repo.update_with_relationships_multi(&mut event_buffer, #entity_snake_ident_plural)?;
                             Ok(#entity_snake_ident_plural)
@@ -597,11 +678,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             repo.remove(&mut event_buffer, id)?;
                             Ok(())
                         }
@@ -614,9 +699,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             repo.remove(&mut event_buffer, id)?;
                             Ok(())
@@ -650,10 +739,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_multi(ids)?;
                             Ok(value)
                         }
@@ -667,9 +760,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_multi(ids)?;
                             Ok(value)
                         }
@@ -701,10 +798,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::entities::#entity_ident;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_all()?;
                             Ok(value)
                         }
@@ -717,9 +818,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_all()?;
                             Ok(value)
                         }
@@ -755,11 +860,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             let #entity_snake_ident_plural = repo.update_multi(&mut event_buffer, #entity_snake_ident_plural)?;
                             Ok(#entity_snake_ident_plural)
                         }
@@ -773,9 +882,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             let #entity_snake_ident_plural = repo.update_multi(&mut event_buffer, #entity_snake_ident_plural)?;
                             Ok(#entity_snake_ident_plural)
@@ -808,11 +921,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             repo.remove_multi(&mut event_buffer, ids)?;
                             Ok(())
                         }
@@ -825,9 +942,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             repo.remove_multi(&mut event_buffer, ids)?;
                             Ok(())
@@ -862,10 +983,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use std::borrow::Borrow;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let #entity_snake_ident = repo.get(id)?;
                             Ok(#entity_snake_ident)
                         }
@@ -879,9 +1004,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let #entity_snake_ident = repo.get(id)?;
                             Ok(#entity_snake_ident)
                         }
@@ -914,10 +1043,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_multi(ids)?;
                             Ok(value)
                         }
@@ -931,9 +1064,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_multi(ids)?;
                             Ok(value)
                         }
@@ -965,10 +1102,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::entities::#entity_ident;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_all()?;
                             Ok(value)
                         }
@@ -981,9 +1122,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_all()?;
                             Ok(value)
                         }
@@ -1025,10 +1170,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use common::direct_access::#entity_snake_ident::#relationship_field_type;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_relationship(id, field)?;
                             Ok(value)
                         }
@@ -1046,9 +1195,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_relationship(id, field)?;
                             Ok(value)
                         }
@@ -1090,10 +1243,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use common::direct_access::#entity_snake_ident::#relationship_field_type;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_relationships_from_right_ids(field, right_ids)?;
                             Ok(value)
                         }
@@ -1111,9 +1268,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let value = repo.get_relationships_from_right_ids(field, right_ids)?;
                             Ok(value)
                         }
@@ -1155,10 +1316,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use common::direct_access::#entity_snake_ident::#relationship_field_type;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_relationship(id, field)?;
                             Ok(value)
                         }
@@ -1176,9 +1341,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_relationship(id, field)?;
                             Ok(value)
                         }
@@ -1220,10 +1389,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use common::direct_access::#entity_snake_ident::#relationship_field_type;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_relationships_from_right_ids(field, right_ids)?;
                             Ok(value)
                         }
@@ -1241,9 +1414,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::read::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::read::#create_entity_repo(transaction)?;
                             let value = repo.get_relationships_from_right_ids(field, right_ids)?;
                             Ok(value)
                         }
@@ -1287,11 +1464,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use common::direct_access::#entity_snake_ident::#relationship_field_type;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             repo.set_relationship(&mut event_buffer, id, field, right_ids)?;
                             Ok(())
                         }
@@ -1310,9 +1491,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             repo.set_relationship(&mut event_buffer, id, field, right_ids)?;
                             Ok(())
@@ -1355,11 +1540,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use common::direct_access::#entity_snake_ident::#relationship_field_type;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             repo.set_relationship_multi(&mut event_buffer, field, relationships)?;
                             Ok(())
                         }
@@ -1377,9 +1566,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             repo.set_relationship_multi(&mut event_buffer, field, relationships)?;
                             Ok(())
@@ -1426,11 +1619,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::direct_access::repository_factory;
                             use common::direct_access::#entity_snake_ident::#relationship_field_type;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             Ok(repo.move_relationship_ids(&mut event_buffer, id, field, ids_to_move, new_index)?)
                         }
                     }
@@ -1449,9 +1646,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             Ok(repo.move_relationship_ids(&mut event_buffer, id, field, ids_to_move, new_index)?)
                         }
@@ -1483,10 +1684,14 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use common::types::EntityId;
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let snapshot = repo.snapshot(ids)?;
                             Ok(snapshot)
                         }
@@ -1499,9 +1704,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let snapshot = repo.snapshot(ids)?;
                             Ok(snapshot)
                         }
@@ -1532,11 +1741,15 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                         fn #function_ident(&self, snap: &common::snapshot::EntityTreeSnapshot) -> Result<()> {
                             use common::direct_access::repository_factory;
 
-                            let borrowed_transaction = self.transaction.lock().unwrap();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
-                            let mut event_buffer = self.event_buffer.lock().unwrap();
+                            let borrowed_transaction = common::long_operation::lock_or_recover(&self.transaction);
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
+                            let mut event_buffer = common::long_operation::lock_or_recover(&self.event_buffer);
                             repo.restore(&mut event_buffer, snap)?;
                             Ok(())
                         }
@@ -1548,9 +1761,13 @@ pub fn uow_action_impl(args: TokenStream, input: TokenStream) -> TokenStream {
                             use std::borrow::Borrow;
 
                             let borrowed_transaction = self.transaction.borrow();
-                            let mut repo = repository_factory::write::#create_entity_repo(
-                                &borrowed_transaction.as_ref().expect("Transaction not started"),
-                            )?;
+                            let transaction = borrowed_transaction.as_ref().ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unit of work used before `begin_transaction` — no transaction is \
+                                     open on this UoW"
+                                )
+                            })?;
+                            let mut repo = repository_factory::write::#create_entity_repo(transaction)?;
                             let mut event_buffer = self.event_buffer.borrow_mut();
                             repo.restore(&mut event_buffer, snap)?;
                             Ok(())

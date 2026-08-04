@@ -21,7 +21,7 @@ pub fn create_orphan_{{ entity.snake_name }}(
     dto: &Create{{ entity.pascal_name }}Dto,
 ) -> Result<{{ entity.pascal_name }}Dto> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::create_orphan(
         &ctx.db_context,
         &ctx.event_hub,
@@ -49,7 +49,7 @@ pub fn create_{{ entity.snake_name }}(
     index: i32,
 ) -> Result<{{ entity.pascal_name }}Dto> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::create(
         &ctx.db_context,
         &ctx.event_hub,
@@ -79,7 +79,7 @@ pub fn create_orphan_{{ entity.snake_name }}_multi(
     dtos: &[Create{{ entity.pascal_name }}Dto],
 ) -> Result<Vec<{{ entity.pascal_name }}Dto>> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::create_orphan_multi(
         &ctx.db_context,
         &ctx.event_hub,
@@ -107,7 +107,7 @@ pub fn create_{{ entity.snake_name }}_multi(
     index: i32,
 ) -> Result<Vec<{{ entity.pascal_name }}Dto>> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::create_multi(
         &ctx.db_context,
         &ctx.event_hub,
@@ -157,7 +157,7 @@ pub fn update_{{ entity.snake_name }}(
     dto: &Update{{ entity.pascal_name }}Dto,
 ) -> Result<{{ entity.pascal_name }}Dto> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::update(
         &ctx.db_context,
         &ctx.event_hub,
@@ -182,7 +182,7 @@ pub fn update_{{ entity.snake_name }}_multi(
     dtos: &[Update{{ entity.pascal_name }}Dto],
 ) -> Result<Vec<{{ entity.pascal_name }}Dto>> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::update_multi(
         &ctx.db_context,
         &ctx.event_hub,
@@ -207,7 +207,7 @@ pub fn update_{{ entity.snake_name }}_with_relationships(
     dto: &{{ entity.pascal_name }}Dto,
 ) -> Result<{{ entity.pascal_name }}Dto> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::update_with_relationships(
         &ctx.db_context,
         &ctx.event_hub,
@@ -232,7 +232,7 @@ pub fn update_{{ entity.snake_name }}_with_relationships_multi(
     dtos: &[{{ entity.pascal_name }}Dto],
 ) -> Result<Vec<{{ entity.pascal_name }}Dto>> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::update_with_relationships_multi(
         &ctx.db_context,
         &ctx.event_hub,
@@ -257,7 +257,7 @@ pub fn remove_{{ entity.snake_name }}(
     id: &EntityId,
 ) -> Result<()> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::remove(
         &ctx.db_context,
         &ctx.event_hub,
@@ -283,7 +283,7 @@ pub fn remove_{{ entity.snake_name }}_multi(
     ids: &[EntityId],
 ) -> Result<()> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::remove_multi(
         &ctx.db_context,
         &ctx.event_hub,
@@ -353,7 +353,7 @@ pub fn set_{{ entity.snake_name }}_relationship(
     dto: &{{ entity.pascal_name }}RelationshipDto,
 ) -> Result<()> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::set_relationship(
         &ctx.db_context,
         &ctx.event_hub,
@@ -381,7 +381,7 @@ pub fn move_{{ entity.snake_name }}_relationship(
     new_index: i32,
 ) -> Result<Vec<EntityId>> {
     {%- if entity.inner.undoable %}
-    let mut undo_redo_manager = ctx.undo_redo_manager.lock().unwrap();
+    let mut undo_redo_manager = common::long_operation::lock_or_recover(&ctx.undo_redo_manager);
     {{ entity.snake_name }}_controller::move_relationship(
         &ctx.db_context,
         &ctx.event_hub,

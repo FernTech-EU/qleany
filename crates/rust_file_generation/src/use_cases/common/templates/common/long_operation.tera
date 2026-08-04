@@ -164,13 +164,31 @@ trait OperationHandleTrait: Send {
     fn is_finished(&self) -> bool;
 }
 
-/// Lock a mutex, recovering from poisoning by returning the inner value.
+/// Lock a mutex, recovering from poisoning by returning the inner value — and
+/// **clearing** the poison, so recovery is permanent rather than per-call.
 ///
-/// If a thread panicked while holding the lock, the data may be in an
-/// inconsistent state, but for status/progress tracking this is preferable
-/// to propagating the panic.
-fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+/// If a thread panicked while holding the lock the data may be in an
+/// inconsistent state, but for the transaction handles, event buffers and
+/// status/progress trackers this guards, that is strictly preferable to
+/// propagating the panic: the release profile unwinds, so a panic inside a long
+/// operation is caught and reported as `Failed` — and every *later* use of the
+/// same mutex would otherwise panic again, turning one reported failure into a
+/// dead process.
+///
+/// `clear_poison` matches the `RwLock` counterparts in
+/// `database::hashmap_store` (`read_or_recover` / `write_or_recover`).
+/// `PoisonError::into_inner` alone leaves the flag set, so a plain
+/// `.lock().unwrap()` elsewhere in the process would still trip on a lock this
+/// function had already recovered.
+pub fn lock_or_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            let guard = poisoned.into_inner();
+            mutex.clear_poison();
+            guard
+        }
+    }
 }
 
 /// The completion signal every operation publishes to when it ends.

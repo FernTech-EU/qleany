@@ -352,13 +352,31 @@ impl UndoRedoManager {
         if self.composite_nesting_level == 0 {
             if let Some(composite) = self.in_progress_composite.take() && !composite.is_empty() {
                     let target_stack_id = self.composite_stack_id.unwrap_or(0);
-                    let stack = self
-                        .stacks
-                        .get_mut(&target_stack_id)
-                        .expect("Stack must exist");
-                    stack.undo_stack.push(Box::new(composite));
-                    stack.redo_stack.clear();
-                
+                    // A missing stack is a caller bug (the stack was dropped
+                    // while a composite was open on it), but `end_composite`
+                    // returns `()` and is called from a dozen fire-and-forget
+                    // UI sites, so it cannot report one. It used to
+                    // `.expect("Stack must exist")` — which killed the whole
+                    // process, mid-edit, over a lost undo entry.
+                    //
+                    // Same shape as `database::write_guard`'s `acquire`: loud in
+                    // a debug build so the bug is caught in development, and a
+                    // degradation in a shipped one — the grouped commands stay
+                    // applied, they just aren't undoable as a unit.
+                    match self.stacks.get_mut(&target_stack_id) {
+                        Some(stack) => {
+                            stack.undo_stack.push(Box::new(composite));
+                            stack.redo_stack.clear();
+                        }
+                        None => {
+                            debug_assert!(
+                                false,
+                                "end_composite: undo stack {} does not exist — a composite was \
+                                 opened on a stack that has since been removed",
+                                target_stack_id
+                            );
+                        }
+                    }
             }
             // not sure if we want to send events for composites
             if let Some(event_hub) = &self.event_hub {
