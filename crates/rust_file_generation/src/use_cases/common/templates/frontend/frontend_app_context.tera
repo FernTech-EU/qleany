@@ -52,6 +52,18 @@ impl AppContext {
             lom.set_event_hub(&event_hub);
         }
 
+        // And into undo_redo_manager, for the same reason and at the same
+        // moment. It used to be injected lazily, by whichever undo/redo command
+        // happened to run first — which meant the *push* events never reached
+        // anyone: nothing pushes through those commands, so on a context where
+        // the user had only ever edited, `StackChanged` was emitted into a
+        // `None` hub and dropped. A subscriber cannot learn that "can undo" just
+        // became true from an event that is only delivered after the first undo.
+        {
+            let mut urm = common::long_operation::lock_or_recover(&undo_redo_manager);
+            urm.set_event_hub(&event_hub);
+        }
+
         Self {
             db_context,
             event_hub,

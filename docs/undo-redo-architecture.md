@@ -394,6 +394,74 @@ The key questions to ask are: Do you have data that should not participate in un
 
 Settings, preferences, search results, and caches belong in non-undoable trunks. User-created content belongs in undoable trunks. Temporary UI state belongs outside the entity tree entirely or in non-undoable trunks.
 
+## Naming, identifying and bounding an entry
+
+Everything above is about *which stack*. These are about *which entry*, and they exist
+because an application that offers one Undo command over the whole app needs answers the
+manager could not give.
+
+**A toast's Undo must name its operation.** `undo()` pops whatever is on top, and between
+offering the button and the user clicking it anything may have pushed — an autosave, a second
+window, a background job. The button then reverses that instead, silently, while the user
+believes they took back what the toast named. So each push mints a sequence:
+
+```rust
+manager.add_command_to_stack(Box::new(uc), stack_id)?;
+let seq = manager.last_pushed_seq();          // the entry it landed in
+…
+match manager.undo_if_head(stack_id, seq)? {
+    UndoStatus::Undone     => { /* done */ }
+    UndoStatus::Superseded => { /* say so; do not undo something else */ }
+    UndoStatus::Empty      => { /* nothing left */ }
+}
+```
+
+A *merged* push reports the sequence of the entry it merged into, which is what a caller
+holding it wants: for a burst of coalesced typing, the burst is the operation.
+
+**A menu row should say what it will undo.** `UndoRedoCommand::label()` returns an
+`UndoLabel { subject, action }` — a machine key, never a sentence, because generated code
+knows nothing about locales. The application maps `("binder_item", "remove")` onto its own
+translation. Read the head's with `undo_label(stack_id)` / `redo_label(stack_id)`. A group
+names itself with `begin_composite_labeled(…)`: its constituents describe its parts, so a
+menu built from them says *"Undo update"* for what the user did as one act.
+
+**Some writes must happen and must not be history.** A buffer mirrored to the store on a
+timer, a cache line, an index rebuilt on open. `stack_id: None` does not opt out — it means
+stack `0` — so the doctrine above ("a throwaway stack, cleared after execution") relies on a
+clear that nobody remembers. `UNTRACKED_STACK_ID` drops the command at the door instead, so
+there is nothing left to clear. Opening a composite on it is an error.
+
+**History needs a ceiling.** `set_undo_limit(Some(n))` drops the oldest entries past `n`;
+`None` is the old unbounded behaviour. Worth setting: every entry can pin an
+`EntityTreeSnapshot`, so a day-long session has no bound at all. For scale, LibreOffice
+defaults to 100 steps and caps at 1000.
+
+**And a way to end a merge run.** Merging looks only at the shape of two commands — adjacent,
+close in time — and cannot see that something unrelated happened between them. A caller that
+knows a dividing line was crossed calls `seal_head(stack_id)`, and the next command starts a
+new entry.
+
+**Events.** `UndoRedoEvent::StackChanged` fires when history is *created* (a push, a merge) or
+cleared, not only when it is consumed, and every variant carries the stack id in
+`Event::data`. Without both, a UI has to poll, and a process holding one stack per open
+document cannot tell whose history moved. The hub is injected into the manager by
+`AppContext::new`, not by the first undo — inject it later than that and the push events, the
+whole reason the variant exists, are emitted into nothing.
+
+**A record-nothing path reports nothing.** `last_pushed_seq()` is `None` after any call that
+did not create an entry: an untracked write, a command folded into a still-open composite, a
+group that closed empty or whose stack had gone, a cancelled group. This matters more than it
+looks. A stale register does not merely misreport — the number it returns names an *earlier*
+entry that is still the head, so `undo_if_head` finds a match and undoes it. The mechanism
+built to stop a toast reversing the wrong thing would be the thing doing it.
+
+**A composite owns its stack only while it is open.** `begin_composite` refuses a stack other
+than the one already in progress, so `end_composite`, `cancel_composite` and
+`clear_all_stacks` all release the target. Forget it in any one of them and that manager is
+pinned to a single stack for compositing forever after — which, in a process holding one
+stack per open document, means every document after the first quietly loses grouping.
+
 ## Snapshots
 
 Delete a `Calendar` and you don't just delete one row. You delete its `CalendarEvent`s, their `Reminder`s, and every junction table entry connecting those events to `Tag`s. Now undo that. You need to put back the entire tree, exactly as it was, relationships and all. That's what snapshots do.

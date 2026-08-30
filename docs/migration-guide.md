@@ -4,6 +4,157 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v1.10.0 to v1.11.0 — Undo entries gain identity: sequences, labels, an untracked stack
+
+**Qleany version**: v1.11.0
+
+### What changed
+
+Template-only release: no manifest schema change. The undo/redo manager grows the four
+things an application needs before it can offer *one* Undo command over the whole app rather
+than a per-feature button, and every one of them was a real defect somewhere first.
+
+**1. Entries are identified.** `UndoRedoManager` now stores an `UndoEntry { command, seq }`
+rather than a bare `Box<dyn UndoRedoCommand>`, and mints a process-unique sequence for each
+push. Read the one just created with `last_pushed_seq()`, and hand it back later to:
+
+```rust
+pub fn undo_if_head(&mut self, stack_id: Option<u64>, seq: u64) -> Result<UndoStatus>
+pub enum UndoStatus { Undone, Superseded, Empty }
+```
+
+This exists because *"Undo"* on a toast is offered **for one operation**, and the stack keeps
+moving underneath it — an autosave, a second window, a background job. Plain `undo()` pops
+whatever is on top, so the button silently reverses the wrong thing while the user believes
+they took back what the toast named. `undo_if_head` refuses instead.
+
+Also new, alongside: `head_seq(stack_id)` and `get_redo_stack_size(stack_id)`.
+
+**2. Commands can name themselves.**
+
+```rust
+pub struct UndoLabel { pub subject: &'static str, pub action: &'static str }
+
+trait UndoRedoCommand {
+    fn label(&self) -> Option<UndoLabel> { None }   // defaulted — existing impls compile
+}
+
+// on the manager
+pub fn undo_label(&self, stack_id: Option<u64>) -> Option<UndoLabel>
+pub fn redo_label(&self, stack_id: Option<u64>) -> Option<UndoLabel>
+```
+
+Deliberately a **machine key**, not a sentence: generated code knows nothing about locales
+and must not carry an application's wording. The application maps `("binder_item", "remove")`
+to its own translation. A group names itself through
+`begin_composite_labeled(stack_id, label)` or `CompositeCommand::labeled` — a composite's
+constituent labels describe its parts, so a menu built from them reads *"Undo update"* for
+what the user experienced as one act.
+
+**3. `UNTRACKED_STACK_ID` — a write that must happen and must not be history.**
+
+```rust
+pub const UNTRACKED_STACK_ID: u64 = u64::MAX;
+```
+
+The generated commands always push; `stack_id: None` resolves to the global stack `0` rather
+than opting out. So the only way to keep a mirrored buffer, a cache line or an index rebuild
+out of the user's history was to push it somewhere and clear that somewhere afterwards —
+which nobody remembers to do, and which is why stack 0 grows forever in most consuming
+projects. Passing this id drops the command at the door. `begin_composite` on it is refused
+with an error: a group whose commands are dropped could never be undone.
+
+**4. A bound, and a way to break a merge.**
+
+```rust
+pub fn set_undo_limit(&mut self, limit: Option<usize>)  // None = unbounded, the old behaviour
+pub fn undo_limit(&self) -> Option<usize>
+pub fn seal_head(&mut self, stack_id: Option<u64>)
+```
+
+Undo history was unbounded, and every entry can pin an `EntityTreeSnapshot`. `seal_head`
+closes the top entry to merging: merging decides on the *shape* of two commands — adjacent,
+close in time — and cannot see that something unrelated happened between them, so a caller
+that knows a dividing line was crossed says so.
+
+**5. Events say which stack, and announce growth.**
+
+`UndoRedoEvent` gains `StackChanged` — a command pushed, a command merged, a stack cleared —
+and **every** variant now carries the stack id in `Event::data`. Before this, a UI could
+learn that history had been *consumed* but never that it had been *created*, so an Undo menu
+row had nothing to react to and had to be polled; and a process holding one stack per open
+document could not tell whose history had moved. `FlatEventKind` gains the matching
+`UndoStackChanged`, which `is_mutation` reports as `false` like its siblings.
+
+**6. Four fixes in the same code, each of which was a live bug.**
+
+- **`end_composite` now releases the composite's target stack.** `begin_composite` refuses a
+  stack other than the one already open, and only `cancel_composite` ever cleared
+  `composite_stack_id` — so once a group had *ended* normally on stack A, every later
+  `begin_composite` on any other stack returned
+  `"Cannot begin a composite on a different stack while another composite is in progress"`,
+  for the life of the manager. In a process holding one stack per open document, the first
+  document to group anything was the only one that ever could again. `clear_all_stacks`
+  cleared the label and the in-progress group but had the same omission, and now clears it too.
+- **`last_pushed_seq()` reports `None` on every path that records nothing** — a command folded
+  into an open composite, a group that closed empty, a group whose stack had been removed, a
+  cancelled group, and a push to a missing stack. It used to keep whatever it last held, which
+  is worse than wrong: the number it hands back names an *earlier* entry that is still the
+  head, so `undo_if_head` — the mechanism that exists to stop a toast reversing the wrong
+  thing — cheerfully undoes it. Read it straight after the call that pushed, as its contract
+  says.
+- **`push_entry` on a missing stack stores nothing, so it now mints no sequence and emits no
+  `StackChanged`.** It used to announce a change to a stack that does not exist.
+- **`AppContext::new` injects the event hub into the undo manager**, beside the long-operation
+  manager. It was previously injected lazily by whichever of `undo`/`redo`/`begin_composite`/
+  `end_composite`/`cancel_composite` ran first — and *nothing pushes through those*, so on a
+  context where the user had only ever edited, every `StackChanged` was emitted into a `None`
+  hub and dropped. A subscriber cannot learn that "can undo" just became true from an event
+  first delivered after the first undo.
+
+### What you must do
+
+**Regenerate, then check three things.**
+
+1. **`add_command_to_stack` still returns `Result<()>`** and every generated controller is
+   unchanged, so the 200-odd push sites need no edits.
+
+2. **A hand-written `impl UndoRedoCommand`** compiles untouched — `label` is defaulted. Add
+   it where you want a menu to name the command; a feature use case should use
+   `UndoLabel::act("trash_binder_items")`, since its subject *is* the act.
+
+3. **⚠ Check whether your copies of `event.rs`, `flat_event.rs` and
+   `frontend/commands/undo_redo_commands.rs` are hand-edited before regenerating them.**
+   This bit us in a real project: one consumer had switched `event.rs` to
+   `parking_lot::Mutex` and its command facade to `lock()` rather than `lock_or_recover`, and
+   its `flat_event.rs` carried a use case the manifest had since lost — so regenerating any
+   of the three would have reverted working code or silently deleted a variant. Run
+   `qleany diff <path>` on each and hand-apply the two new lines where the file has drifted.
+   Only `common/src/undo_redo.rs` and `common/tests/undo_redo_tests.rs` are safe to
+   regenerate blind.
+
+4. **The generated undo tests were stale and are now fixed.** They called
+   `manager.begin_composite(None)` without `.unwrap()`, from before that method returned
+   `Result` — so regenerating `common/tests/undo_redo_tests.rs` used to break the build under
+   `-D warnings`. It no longer does, and the file gains coverage for the untracked stack,
+   sequences, labels, composite naming, the entry limit, `seal_head` and multi-stack
+   isolation (which nothing tested before).
+
+### What did not change
+
+`undo`, `redo`, `can_undo`, `can_redo`, `add_command`, `add_command_to_stack`,
+`begin_composite`, `end_composite`, `cancel_composite`, `clear_stack`, `clear_all_stacks`,
+`create_new_stack`, `delete_stack` and `get_stack_size` all keep their **signatures**. `None`
+still means stack `0`; `undo()` on an empty stack is still a successful no-op, which is why
+`undo_if_head` returns a status rather than a `bool`.
+
+Their *behaviour* is unchanged too, with the four exceptions in point 6 above — all of which
+are corrections, not choices. If your application worked around the composite-target lockout
+(by cancelling instead of ending a group, say, or by keeping one manager per document to avoid
+it), that workaround is now unnecessary; leaving it in place is harmless.
+
+---
+
 ## v1.9.0 to v1.10.0 — Generated code stops panicking, and passes `-D warnings`
 
 **Qleany version**: v1.10.0
