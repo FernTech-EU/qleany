@@ -481,7 +481,7 @@ impl SnapshotBuilder {
             let rust_type = if is_list {
                 format!("Vec<{}>", rust_base_type)
             } else if f.optional {
-                format!("Option<{}>", &rust_base_type)
+                format!("Option<{}>", rust_base_type)
             } else {
                 rust_base_type.clone()
             };

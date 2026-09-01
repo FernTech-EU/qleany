@@ -95,7 +95,7 @@ pub fn execute(
                 &app_context.event_hub,
                 &dto,
             )?;
-            println!("{}", &return_dto.prompt_text);
+            println!("{}", return_dto.prompt_text);
 
             Ok(())
         }
@@ -145,7 +145,7 @@ pub fn execute(
                 &app_context.event_hub,
                 &dto,
             )?;
-            println!("{}", &return_dto.prompt_text);
+            println!("{}", return_dto.prompt_text);
 
             Ok(())
         }

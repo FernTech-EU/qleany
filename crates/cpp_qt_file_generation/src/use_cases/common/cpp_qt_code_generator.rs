@@ -333,7 +333,7 @@ impl SnapshotBuilder {
             let cpp_qt_type = if is_list {
                 format!("QList<{}>", cpp_qt_base_type)
             } else if f.optional {
-                format!("std::optional<{}>", &cpp_qt_base_type)
+                format!("std::optional<{}>", cpp_qt_base_type)
             } else {
                 cpp_qt_base_type.clone()
             };

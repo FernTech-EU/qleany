@@ -767,7 +767,7 @@ fn fill_field_form(app: &App, field: &direct_access::FieldDto) {
         -1
     };
 
-    log::debug!("Field entity index: {}", &field_entity_index);
+    log::debug!("Field entity index: {}", field_entity_index);
 
     state.set_selected_field_entity_index(field_entity_index);
     state.set_selected_field_relationship(
