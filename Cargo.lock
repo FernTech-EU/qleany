@@ -4798,6 +4798,7 @@ dependencies = [
  "jsonschema",
  "qleany-common",
  "qleany-macros",
+ "qleany-naming",
  "serde",
  "serde_json",
  "serde_yml",

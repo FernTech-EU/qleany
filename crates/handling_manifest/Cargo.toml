@@ -26,6 +26,7 @@ tera = "1.18"
 anyhow = { workspace = true }
 common = { workspace = true }
 macros = { workspace = true }
+naming = { workspace = true }
 chrono = { workspace = true }
 
 [lints]

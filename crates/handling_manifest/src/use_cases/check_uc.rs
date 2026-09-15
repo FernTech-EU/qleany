@@ -283,6 +283,11 @@ pub const CRITICAL_RULES: &[Rule] = &[
         severity: "critical",
         description: "The first enum value must be a simple variant (required for #[derive(Default)])",
     },
+    Rule {
+        id: "C48",
+        severity: "critical",
+        description: "Entity names must not pluralize to the same generated collection name",
+    },
 ];
 
 /// Warning rules – non-blocking issues worth reviewing.
@@ -506,6 +511,65 @@ fn is_forbidden_name(name: &str) -> Option<&'static str> {
     None
 }
 
+/// C48 — groups entities whose generated collection identifier is the same.
+///
+/// Generated code names a collection after the entity it holds, pluralized: an
+/// entity `Entity` becomes the `entities` table on the store. `naming::to_plural`
+/// is not injective — `Base` and `Basis` both give `bases` — so two entity names
+/// that C04 accepts as distinct can still produce a single identifier, which
+/// rustc then rejects inside generated code with nothing pointing back at the
+/// manifest.
+///
+/// Each entry of `entities` is `(name, only_for_heritage)`. Heritage-only
+/// entities are skipped: the generators never materialize them, so they own no
+/// collection. One narrow exception is knowingly not covered: an entity-typed
+/// *field* pointing at a heritage entity pulls that entity into the generation
+/// snapshot so templates can resolve the field's type (`rust_code_generator.rs`,
+/// the `all_entities` branch), which gives it a store field after all. Reporting
+/// a critical for every heritage entity would be a false positive on the common
+/// case, so this rule prefers the miss.
+///
+/// The snake-case step is applied here rather than by the caller so
+/// it cannot drift from the `heck::AsSnakeCase` the generators feed to the
+/// pluralizer. Entities sharing one name are counted once — that is C04's
+/// business, not this rule's. Groups, and the names inside them, are sorted so
+/// the reported message does not depend on iteration order.
+fn collection_name_collisions(entities: &[(&str, bool)]) -> Vec<(String, Vec<String>)> {
+    let mut by_collection: HashMap<String, Vec<String>> = HashMap::new();
+    for (name, only_for_heritage) in entities {
+        if *only_for_heritage || name.is_empty() {
+            continue;
+        }
+        by_collection
+            .entry(naming::to_plural(&name.to_snake_case()))
+            .or_default()
+            .push((*name).to_string());
+    }
+
+    let mut collisions: Vec<(String, Vec<String>)> = by_collection
+        .into_iter()
+        .filter_map(|(collection, mut names)| {
+            names.sort();
+            names.dedup();
+            (names.len() > 1).then_some((collection, names))
+        })
+        .collect();
+    collisions.sort();
+    collisions
+}
+
+/// Renders entity names as `'Base' and 'Basis'`, or `'A', 'B' and 'C'`.
+fn join_quoted_names(names: &[String]) -> String {
+    match names.split_last() {
+        Some((last, [])) => format!("'{}'", last),
+        Some((last, head)) => {
+            let head: Vec<String> = head.iter().map(|n| format!("'{}'", n)).collect();
+            format!("{} and '{}'", head.join(", "), last)
+        }
+        None => String::new(),
+    }
+}
+
 /// Validate enum_values for both entity fields and DTO fields.
 /// Supports simple variants (`Active`), tuple variants (`Text(String)`),
 /// and struct variants (`Image { name: String, width: i64 }`).
@@ -722,6 +786,27 @@ impl CheckUseCase {
                     entity.name.to_upper_camel_case()
                 ));
             }
+        }
+
+        // Unique generated collection names. Unique entity names are not enough:
+        // generated collections are named after the pluralized entity, and
+        // pluralization is not injective.
+        let entity_collection_owners: Vec<(&str, bool)> = entities
+            .iter()
+            .map(|e| (e.name.as_str(), e.only_for_heritage))
+            .collect();
+        for (collection, names) in collection_name_collisions(&entity_collection_owners) {
+            critical_errors.push(format!(
+                "Entities {} {} generate the collection name '{}'; rename {}",
+                join_quoted_names(&names),
+                if names.len() == 2 { "both" } else { "all" },
+                collection,
+                if names.len() == 2 {
+                    "one of them"
+                } else {
+                    "all but one of them"
+                }
+            ));
         }
 
         // Build entity lookup by id
@@ -1421,5 +1506,139 @@ impl CheckUseCase {
             warnings,
             critical_errors,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collection_name_collisions, join_quoted_names};
+
+    /// The entities of Qleany's own manifest, in declaration order.
+    const QLEANY_ENTITIES: &[(&str, bool)] = &[
+        ("Root", false),
+        ("Workspace", false),
+        ("System", false),
+        ("Entity", false),
+        ("Field", false),
+        ("Feature", false),
+        ("File", false),
+        ("UseCase", false),
+        ("Dto", false),
+        ("DtoField", false),
+        ("Global", false),
+        ("Relationship", false),
+        ("UserInterface", false),
+    ];
+
+    #[test]
+    fn distinct_entity_names_usually_yield_distinct_collections() {
+        assert_eq!(
+            collection_name_collisions(&[("Entity", false), ("Feature", false)]),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn two_names_pluralizing_alike_collide() {
+        assert_eq!(
+            collection_name_collisions(&[("Base", false), ("Basis", false)]),
+            vec![(
+                "bases".to_string(),
+                vec!["Base".to_string(), "Basis".to_string()]
+            )]
+        );
+    }
+
+    #[test]
+    fn an_already_plural_name_collides_with_its_singular() {
+        assert_eq!(
+            collection_name_collisions(&[("Settings", false), ("Setting", false)]),
+            vec![(
+                "settings".to_string(),
+                vec!["Setting".to_string(), "Settings".to_string()]
+            )]
+        );
+    }
+
+    #[test]
+    fn an_irregular_plural_name_collides_with_its_singular() {
+        assert_eq!(
+            collection_name_collisions(&[("Child", false), ("Children", false)]),
+            vec![(
+                "children".to_string(),
+                vec!["Child".to_string(), "Children".to_string()]
+            )]
+        );
+    }
+
+    #[test]
+    fn heritage_only_entities_own_no_collection() {
+        // 'Base' is never materialized, so it cannot clash with 'Basis'.
+        assert_eq!(
+            collection_name_collisions(&[("Base", true), ("Basis", false)]),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn empty_names_are_left_to_c03() {
+        assert_eq!(
+            collection_name_collisions(&[("", false), ("", false)]),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_duplicated_name_is_left_to_c04() {
+        assert_eq!(
+            collection_name_collisions(&[("Base", false), ("Base", false)]),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn more_than_two_names_are_reported_as_one_group() {
+        assert_eq!(
+            collection_name_collisions(&[("Index", false), ("Indice", false), ("Indices", false)]),
+            vec![(
+                "indices".to_string(),
+                vec![
+                    "Index".to_string(),
+                    "Indice".to_string(),
+                    "Indices".to_string()
+                ]
+            )]
+        );
+    }
+
+    #[test]
+    fn groups_are_sorted_by_collection_name() {
+        let collisions = collection_name_collisions(&[
+            ("Serie", false),
+            ("Base", false),
+            ("Series", false),
+            ("Basis", false),
+        ]);
+        let collections: Vec<&str> = collisions.iter().map(|(c, _)| c.as_str()).collect();
+        assert_eq!(collections, vec!["bases", "series"]);
+    }
+
+    #[test]
+    fn qleany_own_entities_do_not_collide() {
+        assert_eq!(collection_name_collisions(QLEANY_ENTITIES), vec![]);
+    }
+
+    #[test]
+    fn names_are_joined_for_the_message() {
+        assert_eq!(
+            join_quoted_names(&["Base".to_string(), "Basis".to_string()]),
+            "'Base' and 'Basis'"
+        );
+        assert_eq!(
+            join_quoted_names(&["A".to_string(), "B".to_string(), "C".to_string()]),
+            "'A', 'B' and 'C'"
+        );
+        assert_eq!(join_quoted_names(&["Base".to_string()]), "'Base'");
+        assert_eq!(join_quoted_names(&[]), "");
     }
 }
