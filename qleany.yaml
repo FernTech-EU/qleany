@@ -334,6 +334,7 @@ entities:
     - OneToOne
     - ManyToOne
     - OneToMany
+    - OrderedOneToMany
     - ManyToMany
   - name: strength
     type: enum
