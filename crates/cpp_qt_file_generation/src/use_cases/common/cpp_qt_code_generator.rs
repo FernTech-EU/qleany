@@ -542,9 +542,9 @@ impl SnapshotBuilder {
             backward_relationships: rel_bwd,
             snake_name: heck::AsSnakeCase(&entity.name).to_string(),
             pascal_name: heck::AsPascalCase(&entity.name).to_string(),
-            pascal_plural_name: heck::AsPascalCase(&tools::to_plural(&entity.name)).to_string(),
+            pascal_plural_name: heck::AsPascalCase(&naming::to_plural(&entity.name)).to_string(),
             camel_name: heck::AsLowerCamelCase(&entity.name).to_string(),
-            camel_plural_name: heck::AsLowerCamelCase(&tools::to_plural(&entity.name)).to_string(),
+            camel_plural_name: heck::AsLowerCamelCase(&naming::to_plural(&entity.name)).to_string(),
             sql_safe_snake_name: tools::to_sql_safe_identifier(
                 &heck::AsSnakeCase(&entity.name).to_string(),
             ),

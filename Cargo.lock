@@ -4743,6 +4743,7 @@ dependencies = [
  "log",
  "qleany-common",
  "qleany-macros",
+ "qleany-naming",
  "rayon",
  "serde",
  "serde_json",
@@ -4814,6 +4815,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "qleany-naming"
+version = "1.11.0"
+
+[[package]]
 name = "qleany-rust-file-generation"
 version = "1.11.0"
 dependencies = [
@@ -4825,6 +4830,7 @@ dependencies = [
  "log",
  "qleany-common",
  "qleany-macros",
+ "qleany-naming",
  "rayon",
  "serde",
  "serde_json",

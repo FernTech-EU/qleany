@@ -1,0 +1,22 @@
+[package]
+name = "qleany-naming"
+description = "English pluralization for Qleany's generated identifiers"
+authors.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "../../README.md"
+publish = true
+
+[lib]
+name = "naming"
+
+[dependencies]
+
+[lints]
+workspace = true
