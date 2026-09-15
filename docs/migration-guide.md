@@ -93,6 +93,119 @@ silently move an already-shipped type the day an entity gained a same-named DTO.
 Update call sites mechanically — the feature name in PascalCase goes between
 `Mobile` and the type name.
 
+### Breaking: generated Rust collections use real English plurals
+
+The Rust generator named every generated collection by appending `s` to the
+entity's snake_case name. It now runs the same English pluralizer the C++
+generator uses, so an entity `Entity` gets `entities` where it used to get
+`entitys`, and `Category` gets `categories` rather than `categorys`. **No
+manifest change**: the schema stays at v6 and nothing in the YAML moves.
+
+A generated project was already inconsistent with itself over this. Its `macros`
+crate carries a real pluralizer, so the unit-of-work method it emits for `Entity`
+takes a parameter named `entities` — one crate away from a store field spelled
+`entitys`.
+
+**What actually breaks.** `HashMapStore`'s per-entity fields are `pub`, and the
+struct is public as `common::database::hashmap_store::HashMapStore`. Hand-written
+code that reaches a table off the store has to follow the rename:
+
+```diff
+- let count = store.entitys.read().map(|m| m.len()).unwrap_or(0);
++ let count = store.entities.read().map(|m| m.len()).unwrap_or(0);
+```
+
+`HashMapStoreSnapshot`'s table fields have been `pub(crate)` since v1.8.0, so
+their renames are invisible outside the `common` crate.
+
+Only an entity whose correct plural is not *name* + `s` moves at all. Across
+every manifest in this repository that is exactly three names:
+
+| Entity            | Before                | After              |
+|-------------------|-----------------------|--------------------|
+| `Entity`          | `entitys`             | `entities`         |
+| `Category`        | `categorys`           | `categories`       |
+| `ProjectSettings` | `project_settingss`   | `project_settings` |
+
+`ProjectSettings` is the odd one out: `settings` is already plural, so the
+pluralizer leaves the word alone instead of suffixing it a second time. Every
+other entity name in the examples — `Root`, `Car`, `Customer`, `Task`, `Tag`,
+`UseCase`, `TeamMember`, `EntityA` … — generates exactly the identifier it did
+before.
+
+Qleany's own tree never reaches into `.store.` from hand-written code, so the
+practical blast radius is small; it is still a real rename of a public field for
+anyone whose code does.
+
+**The regeneration trap.** `hashmap_store.rs` is in file group **`base`**, while
+`{entity}_table.rs` and `{entity}_repository.rs` — which are what *read*
+`store.{plural}` — are in group **`entities`**. Regenerate one group without the
+other and you rename the struct fields without updating their readers, or the
+reverse; either way the project stops compiling, on errors that point at the
+readers rather than at the rename. Regenerate both, or just let `qleany generate`
+pick up everything that changed:
+
+```bash
+qleany generate                 # everything modified or new — the safe option
+qleany generate group base      # only half of the rename
+qleany generate group entities  # only the other half
+```
+
+### Also changed: C++ generated identifiers
+
+Both generators now share one pluralizer, and it gained two rules the C++ copy
+did not have.
+
+**It knows which words are already plural** — `settings`, `preferences`,
+`credentials`, `permissions`, `statistics`, `analytics`, `metadata`, `news`, and
+the plural half of the irregular table (`children`, `people`, `data`,
+`indices`, …) — and leaves them alone rather than suffixing them a second time.
+
+**It splits PascalCase, not just snake_case.** This is the rule that makes the
+first one reach C++ at all. The Rust generator passes snake_case names, so
+splitting on `_` was enough to find the word to pluralize; the C++ generator
+passes the entity name verbatim, so `ProjectSettings` was looked up whole,
+matched nothing, and fell through to the suffix rule. Only the final word is
+pluralized now, whichever convention names it:
+
+| Entity            | C++ before            | C++ after         |
+|-------------------|-----------------------|-------------------|
+| `ProjectSettings` | `projectSettingses`   | `projectSettings` |
+| `MenuChild`       | `menuChilds`          | `menuChildren`    |
+| `DataSeries`      | `dataSerieses`        | `dataSeries`      |
+
+A run of capitals is still one word, so `HTTPRequest` stays `HTTPRequests`.
+
+Separately, four sites in the generated list model built a plural by appending
+`s` to the entity name instead of using the plural the view model already
+carried, so `fetch{Entity}sTask` becomes `fetch{Entity}iesTask`. That one lands
+in a `.cpp`, and it changes for ordinary names too — an entity `Entity` moves
+from `fetchEntitysTask` to `fetchEntitiesTask`.
+
+None of this requires a caller to change: the renamed identifiers are either
+positional parameters, private `m_` members, or function-local variables. But a
+regeneration diff will show them, in both headers and sources.
+
+### New check: C48, two entities that generate one collection name
+
+`qleany check` gains a critical rule:
+
+> **C48** — Entity names must not pluralize to the same generated collection name
+
+Appending `s` was injective; real pluralization is not. `Base` and `Basis` both
+give `bases`, `Setting` and `Settings` both give `settings`, `Child` and
+`Children` both give `children`. Two entity names that C04 accepts as distinct
+can now land on one generated identifier, which rustc rejects inside generated
+code with nothing pointing back at the manifest that caused it. C48 catches it
+at the manifest instead:
+
+```
+Entities 'Base' and 'Basis' both generate the collection name 'bases'; rename one of them
+```
+
+Entities marked `only_for_heritage: true` are skipped — the generators never
+materialize them, so they own no collection.
+
 ### Other generator fixes in this release
 
 These change generated output, but need no action from you:

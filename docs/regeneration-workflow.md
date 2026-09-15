@@ -105,10 +105,13 @@ These files contain references to all entities:
 |----------------------------------------------|-------------------------------------------------|
 | `common/event.rs`                            | Event enum variants for all entities            |
 | `common/entities.rs`                         | All entity structs                              |
+| `common/database/hashmap_store.rs`           | Store table fields for all entities             |
 | `common/direct_access/repository_factory.rs` | Factory methods for all repositories            |
 | `common/direct_access/setup.rs`              | Factory methods for all repositories            |
 | `common/direct_access.rs`                    | Module declarations for all entity repositories |
 | `direct_access/lib.rs`                       | Module declarations for all entity features     |
+
+`hashmap_store.rs` additionally pairs with the per-entity files that read it, `common/direct_access/{entity}/{entity}_table.rs` and `common/direct_access/{entity}/{entity}_repository.rs`. The store's field names and the code reading them are generated from the same entity list, yet they sit in different file groups — `base` for the store, `entities` for its readers — so regenerating one group alone leaves the two out of step and the crate stops compiling. Regenerate both groups, or run `qleany generate` with no target.
 
 ### C++/Qt
 
