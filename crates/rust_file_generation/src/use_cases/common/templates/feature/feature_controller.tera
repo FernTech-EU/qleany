@@ -95,11 +95,17 @@ pub fn {{ uc.snake_name }} (
 ) -> Result<{% if uc.dto_out %}{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}> {
     let uow_context = {{ uc.pascal_name }}UnitOfWorkFactory::new(db_context, event_hub);
     let mut uc = {{ uc.pascal_name }}UseCase::new(Box::new(uow_context));
+{#- Binding the result only when there is one: a use case with no output DTO
+    returns `()`, and `let return_dto = ...` on it trips clippy::let_unit_value. -#}
+{%- if uc.dto_out %}
     let return_dto = uc.execute({% if uc.dto_in %} dto {% endif %})?;
+{%- else %}
+    uc.execute({% if uc.dto_in %} dto {% endif %})?;
+{%- endif %}
 {%- if uc.inner.undoable and not uc.inner.read_only %}
     undo_redo_manager.add_command_to_stack(Box::new(uc), stack_id)?;
 {%- endif %}
-    Ok(return_dto)
+    Ok({% if uc.dto_out %}return_dto{% else %}(){% endif %})
 }
 
 {%- endif %}

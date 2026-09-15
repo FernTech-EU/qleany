@@ -125,10 +125,13 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
                 let jn = read_or_recover(&self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }});
                 for (&existing_id, right_ids) in jn.iter() {
                     {%- if f.optional %}
-                    if let Some(ref right_id) = new_entity.{{ f.snake_name }} {
-                        if existing_id != new_entity.id && right_ids.contains(right_id) {
-                            return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
-                        }
+                    // A let-chain rather than nested `if`s: edition 2024 has them, and
+                    // clippy::collapsible_if flags the nested form.
+                    if let Some(ref right_id) = new_entity.{{ f.snake_name }}
+                        && existing_id != new_entity.id
+                        && right_ids.contains(right_id)
+                    {
+                        return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
                     }
                     {%- else %}
                     if existing_id != new_entity.id && right_ids.contains(&new_entity.{{ f.snake_name }}) {
@@ -246,10 +249,13 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
                 let jn = read_or_recover(&self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }});
                 for (&existing_id, right_ids) in jn.iter() {
                     {%- if f.optional %}
-                    if let Some(ref right_id) = entity.{{ f.snake_name }} {
-                        if existing_id != entity.id && right_ids.contains(right_id) {
-                            return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
-                        }
+                    // A let-chain rather than nested `if`s: edition 2024 has them, and
+                    // clippy::collapsible_if flags the nested form.
+                    if let Some(ref right_id) = entity.{{ f.snake_name }}
+                        && existing_id != entity.id
+                        && right_ids.contains(right_id)
+                    {
+                        return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
                     }
                     {%- else %}
                     if existing_id != entity.id && right_ids.contains(&entity.{{ f.snake_name }}) {

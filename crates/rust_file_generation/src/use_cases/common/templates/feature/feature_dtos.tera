@@ -3,8 +3,16 @@
 {%- set f_id = s.file.inner.feature %}
 {%- if f_id %}
 {%- set f = s.features[f_id] %}
+{#- A feature whose use cases declare no DTO yields an empty file, where importing
+    serde is an unused import. -#}
+{%- set_global has_dto = false %}
+{%- for uc_id, uc in f.use_cases %}
+{%- if uc.dto_in or uc.dto_out %}{% set_global has_dto = true %}{% endif %}
+{%- endfor %}
+{%- if has_dto %}
 
 use serde::{Deserialize, Serialize};
+{%- endif %}
 
 {%- set_global emitted_enums = "|" %}
 {%- set_global emitted_imports = "|" %}
