@@ -24,6 +24,9 @@ Dependency direction: **UI -> Controllers -> Use Cases -> Repositories -> Databa
 
 - **Language**: Rust 2024 edition
 - **Database**: in-memory HashMap store (behind RwLock)
+{%- if s.ui.inner.rust_teksilo %}
+- **UI**: Teksilo
+{%- endif %}
 {%- if s.ui.inner.rust_slint %}
 - **UI**: Slint
 {%- endif %}
@@ -95,6 +98,17 @@ Cargo.toml                                          # Workspace root
 +-- cli/                                            # CLI application
 |   +-- src/
 |       +-- main.rs
+{%- endif %}
+{%- if s.ui.inner.rust_teksilo %}
++-- teksilo_ui/                                     # Teksilo desktop UI
+|   +-- src/
+|       +-- main.rs
+|       +-- lib.rs
+|       +-- event_source.rs                         # Qleany EventHub -> teksilo EventSource
+|       +-- session.rs                              # singles + list models
+|       +-- singles/single_{entity_snake}.rs        # one reactive entity
+|       +-- models/{entity}_{field}_list_model.rs   # one reactive collection
+|       +-- app.rs                                  # main window
 {%- endif %}
 {%- if s.ui.inner.rust_slint %}
 +-- slint_ui/                                       # Slint UI application

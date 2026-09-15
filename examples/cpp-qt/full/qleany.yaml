@@ -1,5 +1,5 @@
 schema:
-  version: 5
+  version: 6
 global:
   language: cpp-qt
   application_name: FullCppQtApp
@@ -500,5 +500,3 @@ features:
 ui:
   cpp_qt_qtwidgets: true
   cpp_qt_qtquick: true
-  rust_cli: true
-  rust_slint: true

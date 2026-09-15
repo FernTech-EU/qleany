@@ -9,8 +9,8 @@ pub fn json_validation_schema() -> serde_json::Value {
                 "properties": {
                     "version": {
                         "type": "integer",
-                        "minimum": 5,
-                        "maximum": 5
+                        "minimum": 6,
+                        "maximum": 6
                     }
                 },
                 "required": ["version"],
@@ -247,6 +247,9 @@ pub fn json_validation_schema() -> serde_json::Value {
                         "type": "boolean"
                     },
                     "rust_slint": {
+                        "type": "boolean"
+                    },
+                    "rust_teksilo": {
                         "type": "boolean"
                     },
                     "cpp_qt_qtwidgets": {

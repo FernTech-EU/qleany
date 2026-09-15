@@ -13,6 +13,9 @@ members = [
 {%- if s.ui.inner.rust_cli %}
     "{{ s.global.prefix }}/cli",
 {%- endif %}
+{%- if s.ui.inner.rust_teksilo %}
+    "{{ s.global.prefix }}/teksilo_ui",
+{%- endif %}
 {%- if s.ui.inner.rust_slint %}
     "{{ s.global.prefix }}/slint_ui",
 {%- endif %}
@@ -21,17 +24,22 @@ members = [
 {%- endif %}
     ]
 
-{%- if s.ui.inner.rust_cli and s.ui.inner.rust_slint %}
-default-members = [
-    "{{ s.global.prefix }}/slint_ui",
-]
-{%- elif s.ui.inner.rust_cli %}
-default-members = [
-    "{{ s.global.prefix }}/cli",
-]
+{#- The one target `cargo run` / `cargo build` should pick, in precedence order:
+    teksilo > slint > cli. `mobile_bridge` is a cdylib consumed by Swift/Kotlin and
+    is never a default member; with no runnable frontend we emit no
+    `default-members` at all, so the whole workspace builds. -#}
+{%- set_global default_member = "" %}
+{%- if s.ui.inner.rust_teksilo %}
+{%- set_global default_member = "teksilo_ui" %}
 {%- elif s.ui.inner.rust_slint %}
+{%- set_global default_member = "slint_ui" %}
+{%- elif s.ui.inner.rust_cli %}
+{%- set_global default_member = "cli" %}
+{%- endif %}
+{%- if default_member %}
+
 default-members = [
-    "{{ s.global.prefix }}/slint_ui",
+    "{{ s.global.prefix }}/{{ default_member }}",
 ]
 {%- endif %}
 

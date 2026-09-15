@@ -138,7 +138,7 @@ Launch Qleany. You'll land on the **Home** tab.
    - **Minimal** — Root with one entity (Item). Hello world equivalent
    - **Document Editor** — Documents > Sections with load/save use cases
    - **Data Management** — Items, Categories, Tags with import/export use cases
-5. **Step 4 — UI Options**: Enable **CLI** and/or **Slint (Desktop GUI)**
+5. **Step 4 — UI Options**: Enable **Teksilo (Desktop GUI, recommended)**, **CLI**, and/or **Slint (Desktop GUI)**
 6. Click **Create**, then choose where to save `qleany.yaml` (your project root)
 
 ### Using the CLI
@@ -304,9 +304,20 @@ Click **Features** in the sidebar. You'll see a four-column layout.
 
 ### 5.4 UI Options
 
-You already chose your UI frontends (CLI, Slint, or both) during manifest creation. You can change these later in the **User Interface** tab.
+You already chose your UI frontends (Teksilo, CLI, Slint, or several) during manifest creation. You can change these later in the **User Interface** tab.
 
-For Slint, Qleany generates a basic Slint UI, event system integration and generates command files to bind the UI to the generated controllers. CLI uses clap for you to build a command line interface.
+**Teksilo** is the recommended Rust desktop target. Qleany generates a complete,
+compiling application: a reactive *single* per entity marked `single_model`, a
+reactive *list model* per relationship marked `list_model`, a mock twin of each
+behind the crate's `mocks` feature, the bridge that delivers backend events on
+the UI thread, and a demo window wiring them together.
+
+**Slint** gets a basic UI, event-system integration and command files binding the
+UI to the generated controllers. **CLI** uses clap.
+
+Teksilo and Slint can both be enabled; each becomes its own crate over the same
+backend. The Teksilo binary takes the plain application name, the Slint one is
+suffixed `-slint`.
 
 ### 5.5 Save the Manifest
 
@@ -436,14 +447,20 @@ crates/
 │   │       ├── sale_commands.rs
 │   │       └── root_commands.rs
 │   └── Cargo.toml
-└── slint_ui
-    ├── build.rs
+└── teksilo_ui
     ├── Cargo.toml
-    ├── src
-    │   └── main.rs
-    └── ui                             # ← write your UI here
-        ├── app.slint
-        └── globals.slint
+    └── src
+        ├── main.rs
+        ├── lib.rs                      # builds and runs the app
+        ├── event_source.rs             # backend events → the UI thread
+        ├── session.rs                  # every single and model, wired
+        ├── undo_redo.rs
+        ├── app.rs                      # ← the demo window; replace with your UI
+        ├── singles
+        │   └── single_car.rs           # one per single_model entity
+        └── models
+            ├── coalesced_reload.rs
+            └── root_cars_list_model.rs # one per list_model relationship
 
 
 
@@ -458,6 +475,7 @@ crates/
 - Tests suites for the database and undo redo infrastructure
 - Event system for reactive updates
 - Basic CLI (if selected during project setup)
+- A complete Teksilo desktop UI — singles, list models, mocks, demo window (if selected)
 - Basic empty Slint UI (if selected during project setup)
 
 **What you implement:**
@@ -474,6 +492,19 @@ In a terminal,
 ```bash
 cargo run
 ```
+
+`cargo run` with no arguments builds the workspace's `default-members`, which the
+generator sets to one frontend in the order **Teksilo > Slint > CLI**. To run a
+different one, name its binary:
+
+```bash
+cargo run --bin my_app          # Teksilo
+cargo run --bin my_app-slint    # Slint
+cargo run --bin my-app-cli      # CLI
+```
+
+The Slint binary carries the `-slint` suffix so it cannot collide with the
+Teksilo one when both targets are enabled.
 
 ---
 

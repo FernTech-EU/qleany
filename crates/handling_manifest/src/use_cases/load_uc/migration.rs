@@ -28,6 +28,9 @@ pub fn migrate_to_current(value: &mut Value) -> Result<()> {
     if version <= 4 {
         migrate_v4_to_v5(value);
     }
+    if version <= 5 {
+        migrate_v5_to_v6(value);
+    }
 
     Ok(())
 }
@@ -53,6 +56,14 @@ fn migrate_v2_to_v3(value: &mut Value) {
 fn migrate_v4_to_v5(value: &mut Value) {
     if let Some(schema) = value.get_mut("schema").and_then(|s| s.as_object_mut()) {
         schema.insert("version".to_string(), Value::Number(5.into()));
+    }
+}
+
+/// Migrate a v5 manifest to v6: additive change (`rust_teksilo` on the `ui`
+/// block), just bump version.
+fn migrate_v5_to_v6(value: &mut Value) {
+    if let Some(schema) = value.get_mut("schema").and_then(|s| s.as_object_mut()) {
+        schema.insert("version".to_string(), Value::Number(6.into()));
     }
 }
 
@@ -171,9 +182,27 @@ mod tests {
     }
 
     #[test]
-    fn test_v5_passes_through() {
+    fn test_migrate_v5_to_v6() {
         let mut value = json!({
             "schema": { "version": 5 },
+            "global": { "language": "rust", "application_name": "Test", "organisation": { "name": "Test", "domain": "test.com" }, "prefix_path": "" },
+            "entities": [],
+            "features": [
+                    { "name": "Foo", "use_cases": [
+                        { "name": "Bar" }
+                    ]}
+            ],
+            "ui": {}
+        });
+
+        migrate_to_current(&mut value).unwrap();
+        assert_eq!(value["schema"]["version"], CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn test_v6_passes_through() {
+        let mut value = json!({
+            "schema": { "version": 6 },
             "global": { "language": "rust", "application_name": "Test", "organisation": { "name": "Test", "domain": "test.com" }, "prefix_path": "" },
             "entities": [],
             "features": [

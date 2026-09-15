@@ -210,6 +210,12 @@ struct FieldVM {
     pub enum_needs_entity_id: bool,
     /// Whether any complex variant uses f32/f64
     pub enum_needs_float: bool,
+    /// The target entity's field a list-model row shows, from the manifest's
+    /// `list_model_displayed_field`. Cased here because the manifest carries the
+    /// author's spelling and Tera has no snake/pascal filter. `None` when the
+    /// field is not a list model, or names no display field.
+    pub list_model_display_field_snake_name: Option<String>,
+    pub list_model_display_field_pascal_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -516,6 +522,14 @@ impl SnapshotBuilder {
                 enum_needs_chrono,
                 enum_needs_entity_id,
                 enum_needs_float,
+                list_model_display_field_snake_name: f
+                    .list_model_displayed_field
+                    .as_ref()
+                    .map(|n| heck::AsSnakeCase(n).to_string()),
+                list_model_display_field_pascal_name: f
+                    .list_model_displayed_field
+                    .as_ref()
+                    .map(|n| heck::AsPascalCase(n).to_string()),
             });
         }
 
@@ -1503,12 +1517,7 @@ mod tests {
                     id: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
-                    rust_cli: false,
-                    rust_slint: false,
-                    cpp_qt_qtwidgets: false,
-                    cpp_qt_qtquick: false,
-                    rust_ios: false,
-                    rust_android: false,
+                    ..Default::default()
                 },
             },
             system: SystemVM {
@@ -1620,12 +1629,7 @@ mod tests {
                     id: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
-                    rust_cli: false,
-                    rust_slint: false,
-                    cpp_qt_qtwidgets: false,
-                    cpp_qt_qtquick: false,
-                    rust_ios: false,
-                    rust_android: false,
+                    ..Default::default()
                 },
             },
             system: SystemVM {
@@ -1653,6 +1657,8 @@ mod tests {
                         enum_needs_chrono: false,
                         enum_needs_entity_id: false,
                         enum_needs_float: false,
+                        list_model_display_field_snake_name: None,
+                        list_model_display_field_pascal_name: None,
                     },
                     FieldVM {
                         inner: field_tags.clone(),
@@ -1669,6 +1675,8 @@ mod tests {
                         enum_needs_chrono: false,
                         enum_needs_entity_id: false,
                         enum_needs_float: false,
+                        list_model_display_field_snake_name: None,
+                        list_model_display_field_pascal_name: None,
                     },
                 ];
                 m.insert(

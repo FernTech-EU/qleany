@@ -301,12 +301,7 @@ fn for_file_feature_without_use_cases_errors() {
         id: 1,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
-        rust_cli: false,
-        rust_slint: false,
-        cpp_qt_qtwidgets: false,
-        cpp_qt_qtquick: false,
-        rust_ios: false,
-        rust_android: false,
+        ..Default::default()
     };
     uow.user_interfaces.insert(1, user_interface);
     let workspace = Workspace {
@@ -467,12 +462,7 @@ fn for_file_happy_path_feature_with_use_case_and_dtos() {
         id: 1,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
-        rust_cli: false,
-        rust_slint: false,
-        cpp_qt_qtwidgets: false,
-        cpp_qt_qtquick: false,
-        rust_ios: false,
-        rust_android: false,
+        ..Default::default()
     };
     uow.user_interfaces.insert(1, user_interface);
     let workspace = Workspace {
@@ -605,12 +595,7 @@ fn for_file_various_combinations_generate_expected_items() {
         id: 1,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
-        rust_cli: false,
-        rust_slint: false,
-        cpp_qt_qtwidgets: false,
-        cpp_qt_qtquick: false,
-        rust_ios: false,
-        rust_android: false,
+        ..Default::default()
     };
     uow.user_interfaces.insert(1, user_interface);
     let workspace = Workspace {
@@ -949,12 +934,7 @@ fn base_user_interface() -> UserInterface {
         id: 1,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
-        rust_cli: false,
-        rust_slint: false,
-        cpp_qt_qtwidgets: false,
-        cpp_qt_qtquick: false,
-        rust_ios: false,
-        rust_android: false,
+        ..Default::default()
     }
 }
 

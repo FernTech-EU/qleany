@@ -4,9 +4,58 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
-## v1.11.0 to next — Mobile bridge fixes
+## v1.11.0 to next — Teksilo becomes a Rust UI target (schema v6)
 
 **Qleany version**: unreleased
+
+### What changed
+
+A new UI flag, `rust_teksilo`, generates `crates/teksilo_ui/` — a complete Teksilo
+desktop application over the same `frontend` crate the other Rust targets use. See
+`qleany docs manifest` for what it emits.
+
+Schema goes to **v6**. The change is additive, so an existing manifest needs no
+edit: `qleany` migrates a v5 manifest in memory on load, and rewrites the version
+the next time it saves.
+
+```yaml
+ui:
+  rust_cli: true
+  rust_teksilo: true
+  rust_slint: false
+```
+
+### Breaking: the generated Slint binary is renamed
+
+A Slint project's executable is now **`{app_snake_name}-slint`** rather than
+`{app_snake_name}`. The package name is unchanged, so nothing that *depends* on
+the crate moves — only the produced binary.
+
+This is forced by coexistence. The Slint package is named after the application,
+so Cargo derived a binary of the same name; the Teksilo crate's binary wants that
+name too. Two binaries with one name is an output-filename collision that fails
+`cargo build --workspace`.
+
+Update anything that names the executable:
+
+```diff
+- cargo run --bin my_app
++ cargo run --bin my_app-slint
+```
+
+```diff
+- ./target/release/my_app
++ ./target/release/my_app-slint
+```
+
+`cargo run` alone is unaffected: `default-members` picks one frontend for you, in
+the order teksilo > slint > cli.
+
+### Breaking for older Qleany
+
+A manifest saved at v6 is rejected by Qleany ≤ v1.11.0 with *"Manifest schema
+version 6 is newer than supported version 5"*. Keep a v5 copy if an older
+generator still has to read it.
 
 ### Breaking: mobile feature DTO and enum types are namespaced by feature
 
@@ -43,6 +92,21 @@ silently move an already-shipped type the day an entity gained a same-named DTO.
 
 Update call sites mechanically — the feature name in PascalCase goes between
 `Mobile` and the type name.
+
+### Other generator fixes in this release
+
+These change generated output, but need no action from you:
+
+- Generated DTOs and repositories no longer call `.clone()` on `Copy` fields, so
+  generated code no longer trips `clippy::clone_on_copy`. If you suppressed that
+  lint for generated code, you can drop the suppression.
+- The mobile bridge handles `FlatEventKind::UndoStackChanged`, which v1.11.0
+  added without updating the bridge — generated iOS/Android projects had stopped
+  compiling.
+- The mobile bridge crate gains a `lib` crate-type alongside `cdylib`/`staticlib`,
+  so its own generated integration test can link it.
+- That test suite now compiles and passes. It never had: it was handed an `Arc`
+  where `set_event_listener` takes a `Box`, and nothing built it.
 
 ---
 

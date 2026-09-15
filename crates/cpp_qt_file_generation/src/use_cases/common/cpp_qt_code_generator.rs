@@ -1504,12 +1504,7 @@ mod tests {
                     id: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
-                    rust_cli: false,
-                    rust_slint: false,
-                    cpp_qt_qtwidgets: false,
-                    cpp_qt_qtquick: false,
-                    rust_ios: false,
-                    rust_android: false,
+                    ..Default::default()
                 },
             },
             system: SystemVM {
@@ -1623,12 +1618,7 @@ mod tests {
                     id: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
-                    rust_cli: false,
-                    rust_slint: false,
-                    cpp_qt_qtwidgets: false,
-                    cpp_qt_qtquick: false,
-                    rust_ios: false,
-                    rust_android: false,
+                    ..Default::default()
                 },
             },
             system: SystemVM {

@@ -54,7 +54,7 @@ pub fn execute(
     let application_name = "Demo".to_string();
 
     let options = match target_language {
-        LanguageOption::Rust => vec!["rust_cli".to_string(), "rust_slint".to_string()],
+        LanguageOption::Rust => vec!["rust_cli".to_string(), "rust_teksilo".to_string()],
         LanguageOption::CppQt => vec!["cpp_qt_qtquick".to_string(), "cpp_qt_qtwidgets".to_string()],
     };
 

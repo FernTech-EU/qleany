@@ -92,7 +92,7 @@ pub struct NewArgs {
     #[arg(short, long, value_enum)]
     pub template: Option<ManifestTemplateOption>,
 
-    /// UI options: rust_cli, rust_slint, cpp_qt_qtquick, cpp_qt_qtwidgets, rust_ios, rust_android
+    /// UI options: rust_cli, rust_teksilo, rust_slint, cpp_qt_qtquick, cpp_qt_qtwidgets, rust_ios, rust_android
     #[arg(short, long)]
     pub options: Vec<String>,
 

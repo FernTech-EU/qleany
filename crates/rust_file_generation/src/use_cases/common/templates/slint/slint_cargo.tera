@@ -16,6 +16,15 @@ readme = "../../README.md"
 publish = true
 build = "build.rs"
 
+# Named explicitly so it cannot collide with the Teksilo crate's binary. Cargo
+# would otherwise derive this bin's name from the package name, which is the bare
+# application name -- exactly what `teksilo_ui` calls its own binary. With both
+# targets enabled that is an output-filename collision, and it only surfaces on
+# `cargo build`: `cargo check` writes hash-named metadata and passes.
+[[bin]]
+name = "{{ s.global.application_snake_name }}-slint"
+path = "src/main.rs"
+
 [dependencies]
 slint = "1.14"
 log = "0.4"

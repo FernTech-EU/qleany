@@ -40,9 +40,9 @@ Qleany follows Package by Feature (Vertical Slice Architecture) principles. Defi
 
 - **Complete CRUD infrastructure**: Controllers, DTOs, use cases, repositories per entity
 - **Undo/redo system** (optional): Command-based with multi-stack scoping, composite grouping, and failure strategies; async execution with QCoro coroutines in C++/Qt, synchronous in Rust; cascade snapshot/restore for entity trees
-- **GUI skeleton generation**: Ready-to-compile frontend code for QtQuick, QtWidgets, Slint, or CLI
+- **GUI skeleton generation**: Ready-to-compile frontend code for Teksilo, QtQuick, QtWidgets, Slint, or CLI
 - **Mobile bridge**: UniFFI-based iOS (Swift) and Android (Kotlin) support with generated async wrappers, event callbacks, and platform READMEs
-- **Models**: C++/Qt only: auto-updating list models and single-entity wrappers with event-driven refresh
+- **Models**: C++/Qt and Teksilo: auto-updating list models and single-entity wrappers with event-driven refresh, each with a mock twin for backend-free UI work
 - **Reactive QML models**: Same than above, but with QML integration, so they can be used directly in the UI without manual wiring (C++/Qt)
 - **QML mocks**: JavaScript stubs that simulate async behavior, enabling UI development without a backend (C++/Qt)
 - **Relationship management**: Uniform junction tables with ordering, two-layer caching, bidirectional navigation, and cascade deletion
@@ -149,7 +149,7 @@ This is the tool I needed when I started Skribisto. If it saves someone else fro
 | Language | Standard    | internal database | Frontend Options                  |
 |----------|-------------|-------------------|-----------------------------------|
 | C++      | C++20 / Qt6 | SQLite            | QtQuick, QtWidgets                |
-| Rust     | Rust 2024   | in-memory HashMap | CLI, Slint, iOS (Swift), Android (Kotlin) |
+| Rust     | Rust 2024   | in-memory HashMap | Teksilo, CLI, Slint, iOS (Swift), Android (Kotlin) |
 
 **Supported deployment targets for C++/Qt:**
 - Desktop Linux (KDE Plasma, GNOME, etc.)
@@ -165,6 +165,7 @@ The generated backend is platform-agnostic. Your business logic, repositories, a
 Also, the internal storage choice (SQLite for C++/Qt, in-memory HashMap store for Rust) is abstracted behind repositories. You can swap out the storage implementation if needed.
 
 **Rust frontend examples:**
+- **Teksilo UI**: the recommended Rust desktop target. Generates singles, list models, mocks and a demo window over the shared `frontend` crate — see [Quick Start Guide - Rust](docs/quick-start-rust.md)
 - **Slint UI**: [qleany/crates/slint_ui](https://github.com/ferntech-eu/qleany/tree/generator_in_rust/crates/slint_ui) (Qleany's current GUI frontend)
 - **Tauri/React**: [qleany/crates/qleany-app](https://github.com/ferntech-eu/qleany/tree/885c3ac6fdf6f115aed2c5a30fd26b81e331b4dd/crates/qleany-app) (abandoned prototypes but still working references)
 

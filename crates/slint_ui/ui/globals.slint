@@ -29,6 +29,7 @@ export global NewManifestWizardState {
     in-out property <string> organization_name: "";
     in-out property <int> template_index: 0;  // 0 = Blank, 1 = Minimal, 2 = DocumentEditor, 3 = DataManagement
     in-out property <bool> opt_rust_cli: false;
+    in-out property <bool> opt_rust_teksilo: false;
     in-out property <bool> opt_rust_slint: false;
     in-out property <bool> opt_cpp_qt_qtwidgets: false;
     in-out property <bool> opt_cpp_qt_qtquick: true;
@@ -373,6 +374,7 @@ export global UserInterfaceTabState {
 
     // UserInterface entity fields
     in-out property <bool> rust_cli: false;
+    in-out property <bool> rust_teksilo: false;
     in-out property <bool> rust_slint: false;
     in-out property <bool> cpp_qt_qtwidgets: false;
     in-out property <bool> cpp_qt_qtquick: false;
@@ -381,6 +383,7 @@ export global UserInterfaceTabState {
 
     // Callbacks for field changes
     callback rust_cli_changed(bool);
+    callback rust_teksilo_changed(bool);
     callback rust_slint_changed(bool);
     callback cpp_qt_qtwidgets_changed(bool);
     callback cpp_qt_qtquick_changed(bool);

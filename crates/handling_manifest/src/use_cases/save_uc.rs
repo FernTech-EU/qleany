@@ -150,6 +150,7 @@ impl SaveUseCase {
         let model_ui = model_structs::Ui {
             rust_cli: ui.rust_cli,
             rust_slint: ui.rust_slint,
+            rust_teksilo: ui.rust_teksilo,
             cpp_qt_qtwidgets: ui.cpp_qt_qtwidgets,
             cpp_qt_qtquick: ui.cpp_qt_qtquick,
             rust_ios: ui.rust_ios,

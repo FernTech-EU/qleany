@@ -150,6 +150,7 @@ pub fn setup_new_manifest_callback(app: &App, app_context: &Arc<AppContext>) {
                 wiz.set_organization_name(slint::SharedString::from(""));
                 wiz.set_template_index(0);
                 wiz.set_opt_rust_cli(false);
+                wiz.set_opt_rust_teksilo(true);
                 wiz.set_opt_rust_slint(false);
                 wiz.set_opt_cpp_qt_qtwidgets(false);
                 wiz.set_opt_cpp_qt_qtquick(true);
@@ -193,6 +194,9 @@ pub fn setup_create_wizard_confirmed_callback(app: &App, app_context: &Arc<AppCo
                 let mut options = Vec::new();
                 if wiz.get_opt_rust_cli() {
                     options.push("rust_cli".to_string());
+                }
+                if wiz.get_opt_rust_teksilo() {
+                    options.push("rust_teksilo".to_string());
                 }
                 if wiz.get_opt_rust_slint() {
                     options.push("rust_slint".to_string());

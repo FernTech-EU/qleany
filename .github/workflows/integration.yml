@@ -77,7 +77,9 @@ jobs:
     name: Rust Example
     needs: build-qleany
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The example now compiles every UI scaffold it enables, including the
+    # Teksilo crate's wgpu/winit tree. A cold cache is a long first build.
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -88,11 +90,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            build-essential \
+            pkg-config \
             libfontconfig1-dev \
             libfreetype6-dev \
             libxcb-shape0-dev \
             libxcb-xfixes0-dev \
-            libxkbcommon-dev
+            libxcb1-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libwayland-dev
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -102,6 +109,9 @@ jobs:
         with:
           shared-key: integration-rust
           workspaces: tests/rust
+          # A first run that times out still warms the dependency cache, so the
+          # retry succeeds instead of timing out identically.
+          cache-on-failure: true
 
       - name: Download Qleany binary
         uses: actions/download-artifact@v8
@@ -123,6 +133,28 @@ jobs:
         run: |
           cd tests/rust
           cargo check --workspace
+
+      # A second, `#[cfg]`-selected implementation of every single and list
+      # model that a default build never compiles.
+      - name: Check Teksilo mock arm
+        run: |
+          cd tests/rust
+          cargo check -p full-rust-app-teksilo-ui --features mocks
+
+      # Two bins with one name fail `cargo build --workspace`; `cargo check`
+      # writes hash-named metadata and passes, so ask cargo for the target list.
+      - name: Check for colliding binary names
+        run: |
+          cd tests/rust
+          cargo metadata --no-deps --format-version 1 | python3 -c '
+          import json, sys, collections
+          meta = json.load(sys.stdin)
+          names = [t["name"] for p in meta["packages"] for t in p["targets"] if "bin" in t["kind"]]
+          dupes = [n for n, c in collections.Counter(names).items() if c > 1]
+          if dupes:
+              sys.exit("colliding binary names: " + ", ".join(sorted(dupes)))
+          print("bins: " + ", ".join(sorted(names)))
+          '
 
       - name: Test
         run: |

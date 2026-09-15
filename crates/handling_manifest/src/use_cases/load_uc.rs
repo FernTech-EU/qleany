@@ -143,6 +143,7 @@ impl LoadUseCase {
             updated_at: chrono::Utc::now(),
             rust_cli: manifest.ui.rust_cli,
             rust_slint: manifest.ui.rust_slint,
+            rust_teksilo: manifest.ui.rust_teksilo,
             cpp_qt_qtwidgets: manifest.ui.cpp_qt_qtwidgets,
             cpp_qt_qtquick: manifest.ui.cpp_qt_qtquick,
             rust_ios: manifest.ui.rust_ios,

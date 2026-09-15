@@ -59,6 +59,7 @@ fn fill_user_interface_tab(app: &App, app_context: &Arc<AppContext>) {
         log::info!("Filling UserInterfaceTabState with UI data: {:?}", ui);
         let state = app.global::<UserInterfaceTabState>();
         state.set_rust_cli(ui.rust_cli);
+        state.set_rust_teksilo(ui.rust_teksilo);
         state.set_rust_slint(ui.rust_slint);
         state.set_cpp_qt_qtwidgets(ui.cpp_qt_qtwidgets);
         state.set_cpp_qt_qtquick(ui.cpp_qt_qtquick);
@@ -71,6 +72,7 @@ fn clear_user_interface_tab(app: &App) {
     log::info!("Clearing UserInterfaceTabState data");
     let state = app.global::<UserInterfaceTabState>();
     state.set_rust_cli(false);
+    state.set_rust_teksilo(false);
     state.set_rust_slint(false);
     state.set_cpp_qt_qtwidgets(false);
     state.set_cpp_qt_qtquick(false);
@@ -258,6 +260,21 @@ fn setup_rust_cli_callback(app: &App, app_context: &Arc<AppContext>) {
     });
 }
 
+fn setup_rust_teksilo_callback(app: &App, app_context: &Arc<AppContext>) {
+    app.global::<UserInterfaceTabState>()
+        .on_rust_teksilo_changed({
+            let ctx = Arc::clone(app_context);
+            let app_weak = app.as_weak();
+            move |new_value| {
+                if let Some(app) = app_weak.upgrade() {
+                    update_user_interface_helper(&app, &ctx, |ui| {
+                        ui.rust_teksilo = new_value;
+                    });
+                }
+            }
+        });
+}
+
 fn setup_rust_slint_callback(app: &App, app_context: &Arc<AppContext>) {
     app.global::<UserInterfaceTabState>()
         .on_rust_slint_changed({
@@ -340,6 +357,7 @@ pub fn init(event_hub_client: &EventHubClient, app: &App, app_context: &Arc<AppC
     subscribe_close_manifest_event(event_hub_client, app, app_context);
     subscribe_load_manifest_event(event_hub_client, app, app_context);
     setup_rust_cli_callback(app, app_context);
+    setup_rust_teksilo_callback(app, app_context);
     setup_rust_slint_callback(app, app_context);
     setup_cpp_qt_qtwidgets_callback(app, app_context);
     setup_cpp_qt_qtquick_callback(app, app_context);

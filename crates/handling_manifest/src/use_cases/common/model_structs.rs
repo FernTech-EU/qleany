@@ -139,6 +139,9 @@ pub struct Ui {
     pub rust_slint: bool,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_false")]
+    pub rust_teksilo: bool,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_false")]
     pub cpp_qt_qtwidgets: bool,
     #[serde(default)]
     #[serde(skip_serializing_if = "is_false")]

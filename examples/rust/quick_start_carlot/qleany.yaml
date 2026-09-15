@@ -1,6 +1,6 @@
 ---
 schema:
-  version: 5
+  version: 6
 global:
   language: rust
   application_name: CarLot
@@ -117,5 +117,6 @@ features:
       - name: export_file_path
         type: string
 ui:
+  rust_teksilo: true
   rust_slint: true
   rust_cli: true

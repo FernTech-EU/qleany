@@ -11,6 +11,13 @@ members = [
     "tested_project/crates/project_management",
     "tested_project/crates/task_management",
     "tested_project/crates/frontend",
+    # Every UI scaffold the Rust example enables. None of these were members
+    # until now, so nothing ever compiled them -- which is how the mobile
+    # bridge came to be broken for several releases without a red build.
+    "tested_project/crates/cli",
+    "tested_project/crates/teksilo_ui",
+    "tested_project/crates/slint_ui",
+    "tested_project/crates/mobile_bridge",
     "functional",
 ]
 resolver = "3"

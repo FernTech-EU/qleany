@@ -1,5 +1,5 @@
 schema:
-  version: 5
+  version: 6
 global:
   language: rust
   application_name: FullRustApp
@@ -515,6 +515,7 @@ features:
         entities: [Task, Comment]
 ui:
   rust_cli: true
+  rust_teksilo: true
   rust_slint: true
   rust_ios: true
   rust_android: true

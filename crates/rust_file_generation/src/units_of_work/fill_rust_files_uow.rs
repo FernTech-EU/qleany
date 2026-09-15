@@ -7,7 +7,9 @@ use crate::use_cases::fill_rust_files_uc::{
 use anyhow::{Ok, Result};
 use common::database::CommandUnitOfWork;
 use common::database::{db_context::DbContext, transactions::Transaction};
-use common::entities::{Entity, Feature, File, Global, Relationship, Root, UseCase, UserInterface};
+use common::entities::{
+    Entity, Feature, Field, File, Global, Relationship, Root, UseCase, UserInterface,
+};
 use common::event::{AllEvent, DirectAccessEntity, Event, EventBuffer, EventHub, Origin};
 use common::types;
 use common::types::EntityId;
@@ -113,6 +115,7 @@ impl CommandUnitOfWork for FillRustFilesUnitOfWork {
 #[macros::uow_action(entity = "UserInterface", action = "Get")]
 #[macros::uow_action(entity = "Entity", action = "GetMulti")]
 #[macros::uow_action(entity = "Entity", action = "GetRelationship")]
+#[macros::uow_action(entity = "Field", action = "GetMulti")]
 #[macros::uow_action(entity = "Relationship", action = "GetMulti")]
 #[macros::uow_action(entity = "Feature", action = "GetMulti")]
 #[macros::uow_action(entity = "Feature", action = "GetRelationship")]

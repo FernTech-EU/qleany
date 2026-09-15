@@ -16,7 +16,7 @@ Real-world manifests you can reference:
 
 ```yaml
 schema:
-  version: 5
+  version: 6
 
 global:
   language: cpp-qt          # rust, cpp-qt
@@ -69,7 +69,7 @@ entities:
 
 ```yaml
 schema:
-  version: 5
+  version: 6
 
 global:
   language: cpp-qt
@@ -606,7 +606,8 @@ You can't put entities in DTOs. Only primitive types are allowed because entitie
 
   ui:
     rust_cli: true
-    rust_slint: true
+    rust_teksilo: true
+    rust_slint: false
     rust_ios: false
     rust_android: false
     cpp_qt_qtwidgets: false
@@ -622,6 +623,7 @@ One backend, many frontends.
 | Flag | Effect |
 |------|--------|
 | `rust_cli` | Generates a Clap CLI crate |
+| `rust_teksilo` | Generates a Teksilo desktop UI crate — the recommended Rust desktop target |
 | `rust_slint` | Generates a Slint desktop UI crate |
 | `rust_ios` | Generates `mobile_bridge` crate + Swift async wrappers + iOS README |
 | `rust_android` | Generates `mobile_bridge` crate + Kotlin suspend wrappers + Android README |
@@ -629,3 +631,26 @@ One backend, many frontends.
 | `cpp_qt_qtquick` | Generates C++/Qt Quick/QML scaffolding |
 
 Either `rust_ios` or `rust_android` triggers generation of the `mobile_bridge` crate with UniFFI bindings. See `qleany docs mobile` for details.
+
+`rust_teksilo` and `rust_slint` can both be enabled; they produce two independent
+desktop crates over the same backend. The Teksilo crate's binary takes the plain
+application name and the Slint one is suffixed `-slint`.
+
+A `rust_*` flag on a manifest whose `language` is not `rust` generates nothing,
+and `qleany check` reports it as warning **W05**.
+
+### What `rust_teksilo` generates
+
+`crates/teksilo_ui/`, a compiling Teksilo application over the generated
+`frontend` crate:
+
+| File | Contents |
+|------|----------|
+| `src/event_source.rs` | Adapts the Qleany event hub to Teksilo's `EventSource`, so events arrive on the UI thread |
+| `src/singles/single_{entity}.rs` | One per entity with `single_model: true` — fields as two-way `Signal`s, auto-refresh, `save()` |
+| `src/models/{entity}_{field}_list_model.rs` | One per relationship with `list_model: true` — a reactive collection read through the owner's relationship |
+| `src/session.rs` | Constructs every single and model, and wires them in one place |
+| `src/app.rs` | A demo window: form, list, detail, undo/redo |
+
+Every single and list model carries a mock twin behind the crate's `mocks`
+feature, so the UI can be run against fabricated data with no backend.

@@ -320,6 +320,12 @@ export component NewManifestWizard inherits Rectangle {
                         }
 
                         CheckBox {
+                            text: "Teksilo (Desktop GUI, recommended)";
+                            checked: NewManifestWizardState.opt_rust_teksilo;
+                            toggled => { NewManifestWizardState.opt_rust_teksilo = self.checked; }
+                        }
+
+                        CheckBox {
                             text: "Slint (Desktop GUI)";
                             checked: NewManifestWizardState.opt_rust_slint;
                             toggled => { NewManifestWizardState.opt_rust_slint = self.checked; }

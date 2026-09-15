@@ -9,8 +9,8 @@ use common::entities::{Entity, FileNature};
 use common::generator::file_list_builder::FileListBuilder;
 use common::types::EntityId;
 use common::{
-    database::CommandUnitOfWork, entities::Feature, entities::File, entities::Global,
-    entities::Relationship, entities::Root, entities::UseCase,
+    database::CommandUnitOfWork, entities::Feature, entities::Field, entities::File,
+    entities::Global, entities::Relationship, entities::Root, entities::UseCase,
 };
 
 pub trait FillRustFilesUnitOfWorkFactoryTrait {
@@ -26,6 +26,7 @@ pub trait FillRustFilesUnitOfWorkFactoryTrait {
 #[macros::uow_action(entity = "UserInterface", action = "Get")]
 #[macros::uow_action(entity = "Entity", action = "GetMulti")]
 #[macros::uow_action(entity = "Entity", action = "GetRelationship")]
+#[macros::uow_action(entity = "Field", action = "GetMulti")]
 #[macros::uow_action(entity = "Relationship", action = "GetMulti")]
 #[macros::uow_action(entity = "Feature", action = "GetMulti")]
 #[macros::uow_action(entity = "Feature", action = "GetRelationship")]
@@ -774,6 +775,159 @@ impl FillRustFilesUseCase {
                 "slint_globals",
                 FileNature::Scaffold,
             );
+        }
+
+        // Teksilo desktop UI crate (generated when rust_teksilo is enabled)
+        if ui.rust_teksilo {
+            let relative_path = format!("{}/teksilo_ui/", prefix);
+
+            // Lists every feature crate in [dependencies] -> all_features.
+            b.add(
+                "Cargo.toml",
+                relative_path.clone(),
+                "teksilo",
+                "teksilo_cargo",
+                FileNature::Scaffold,
+            )
+            .all_features = true;
+
+            let relative_path_src = format!("{}/teksilo_ui/src/", prefix);
+
+            b.add(
+                "main.rs",
+                relative_path_src.clone(),
+                "teksilo",
+                "teksilo_main",
+                FileNature::Scaffold,
+            );
+
+            // Declares every generated single and list model -> all_entities.
+            {
+                let f = b.add(
+                    "lib.rs",
+                    relative_path_src.clone(),
+                    "teksilo",
+                    "teksilo_lib",
+                    FileNature::Aggregate,
+                );
+                f.all_entities = true;
+                f.all_features = true;
+            }
+
+            b.add(
+                "event_source.rs",
+                relative_path_src.clone(),
+                "teksilo",
+                "teksilo_event_source",
+                FileNature::Infrastructure,
+            );
+
+            // Constructs every single and list model, and wires them in one place.
+            b.add(
+                "session.rs",
+                relative_path_src.clone(),
+                "teksilo",
+                "teksilo_session",
+                FileNature::Aggregate,
+            )
+            .all_entities = true;
+
+            b.add(
+                "undo_redo.rs",
+                relative_path_src.clone(),
+                "teksilo",
+                "teksilo_undo_redo",
+                FileNature::Infrastructure,
+            );
+
+            // The demo window elects its subject from the whole model.
+            b.add(
+                "app.rs",
+                relative_path_src.clone(),
+                "teksilo",
+                "teksilo_app",
+                FileNature::Scaffold,
+            )
+            .all_entities = true;
+
+            b.add(
+                "singles.rs",
+                relative_path_src.clone(),
+                "teksilo",
+                "teksilo_singles_mod",
+                FileNature::Aggregate,
+            )
+            .all_entities = true;
+
+            b.add(
+                "models.rs",
+                relative_path_src.clone(),
+                "teksilo",
+                "teksilo_models_mod",
+                FileNature::Aggregate,
+            )
+            .all_entities = true;
+
+            let relative_path_singles = format!("{}/teksilo_ui/src/singles/", prefix);
+            let relative_path_models = format!("{}/teksilo_ui/src/models/", prefix);
+
+            b.add(
+                "coalesced_reload.rs",
+                relative_path_models.clone(),
+                "teksilo",
+                "teksilo_coalesced_reload",
+                FileNature::Infrastructure,
+            );
+
+            for entity in &entities {
+                let entity = entity.as_ref().ok_or(anyhow!("Entity not found"))?;
+                if entity.only_for_heritage {
+                    continue;
+                }
+
+                let entity_snake_name = heck::AsSnakeCase(&entity.name);
+
+                // One single per entity that asked for one.
+                if entity.single_model {
+                    b.add(
+                        format!("single_{}.rs", entity_snake_name),
+                        relative_path_singles.clone(),
+                        "teksilo",
+                        "teksilo_single_entity",
+                        FileNature::Infrastructure,
+                    )
+                    .entity = Some(entity.id);
+                }
+
+                // One list model per relationship field that asked for one. The
+                // entity's OWN fields, not the flattened inherited set: an
+                // inherited entity-typed field has no RelationshipField variant
+                // on this entity, so it could not be read back.
+                let field_ids = uow.get_entity_relationship(
+                    &entity.id,
+                    &common::direct_access::entity::EntityRelationshipField::Fields,
+                )?;
+                let fields = uow.get_field_multi(&field_ids)?;
+                let list_model_fields = fields
+                    .into_iter()
+                    .flatten()
+                    .filter(|f| f.list_model)
+                    .collect::<Vec<_>>();
+
+                for list_model_field in list_model_fields {
+                    let field_snake_name = heck::AsSnakeCase(&list_model_field.name);
+
+                    let f = b.add(
+                        format!("{}_{}_list_model.rs", entity_snake_name, field_snake_name),
+                        relative_path_models.clone(),
+                        "teksilo",
+                        "teksilo_entity_field_list_model",
+                        FileNature::Infrastructure,
+                    );
+                    f.entity = Some(entity.id);
+                    f.field = Some(list_model_field.id);
+                }
+            }
         }
 
         // Mobile bridge crate (generated when rust_ios or rust_android is enabled)

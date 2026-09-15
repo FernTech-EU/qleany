@@ -10,6 +10,7 @@
 #   ./run_tests.sh --rust           Only run the Rust example (generate, build, test).
 #   ./run_tests.sh --cpp-qt         Only run the C++/Qt example (generate, build, test).
 #   ./run_tests.sh --no-cleanup      Keep build directories after the run.
+#   ./run_tests.sh --deep-clean      Also drop tests/rust/target (cold rebuild next run).
 #   ./run_tests.sh --install-deps    Install Ubuntu packages first (Qt6, QCoro, Rust).
 #
 # Options can be combined, for example:
@@ -37,6 +38,7 @@ SEVENTEEN=false
 RUN_RUST=false
 RUN_CPPQT=false
 NO_CLEANUP=false
+DEEP_CLEAN=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -64,6 +66,10 @@ while [[ $# -gt 0 ]]; do
             NO_CLEANUP=true
             shift
             ;;
+        --deep-clean)
+            DEEP_CLEAN=true
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -73,6 +79,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --rust           Only process the Rust example"
             echo "  --cpp-qt         Only process the C++/Qt example"
             echo "  --no-cleanup     Keep generated temp/ directories after the run"
+            echo "  --deep-clean     Also remove tests/rust/target (forces a cold rebuild)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "When neither --rust nor --cpp-qt is given, both examples are processed."
@@ -103,6 +110,19 @@ fi
 # -----------------------------------------------
 if $INSTALL_DEPS; then
     echo "=== Installing Ubuntu dependencies ==="
+
+    echo ""
+    echo "--- Installing Teksilo/winit build dependencies ---"
+    # `winit` pulls `x11-dl`, whose build script runs pkg-config against x11, so
+    # these are needed even for a check-only build.
+    sudo apt-get update
+    sudo apt-get install -y \
+        build-essential \
+        pkg-config \
+        libx11-dev \
+        libxcb1-dev \
+        libxkbcommon-dev \
+        libwayland-dev
 
     echo ""
     echo "--- Installing Qt6 and build tools ---"
@@ -163,6 +183,16 @@ if $RUN_RUST; then
     RUST_MANIFEST="$REPO_ROOT/examples/rust/$EXAMPLE_DIR/qleany.yaml"
     RUST_TEST_PROJECT="$REPO_ROOT/tests/rust/tested_project"
 
+    # Generated package names are derived from the manifest's application_name,
+    # so read it rather than hard-coding "full-rust-app".
+    rust_pkg() {
+        local app
+        app=$(grep -m1 '^  application_name:' "$RUST_MANIFEST" | sed 's/.*: *//' | tr -d '\r')
+        # PascalCase -> kebab-case, matching heck::AsKebabCase
+        app=$(printf '%s' "$app" | sed -E 's/([a-z0-9])([A-Z])/\1-\2/g' | tr '[:upper:]' '[:lower:]')
+        printf '%s-%s' "$app" "$1"
+    }
+
     echo ""
     echo "--- Rust: generate into tests/rust/tested_project/ ---"
     mkdir -p "$RUST_TEST_PROJECT"
@@ -175,9 +205,32 @@ if $RUN_RUST; then
 
     if ! $GENERATE_ONLY; then
         echo ""
-        echo "--- Rust: cargo check (functional tests) ---"
+        echo "--- Rust: cargo check (backend + every UI scaffold) ---"
         cd "$REPO_ROOT/tests/rust"
         cargo check --workspace
+
+        # The mocks arm is a second, `#[cfg]`-selected implementation of every
+        # single and list model. A default build never compiles it, so without
+        # this it rots silently until someone tries to preview a UI.
+        echo ""
+        echo "--- Rust: cargo check --features mocks (Teksilo mock arm) ---"
+        cargo check -p "$(rust_pkg teksilo-ui)" --features mocks
+
+        # Two bins with one name is an output-filename collision that fails
+        # `cargo build --workspace`. `cargo check` writes hash-named metadata and
+        # passes, so ask cargo for the target list instead of paying for a build.
+        echo ""
+        echo "--- Rust: binary-name collision check ---"
+        cargo metadata --no-deps --format-version 1 \
+            | python3 -c '
+import json, sys, collections
+meta = json.load(sys.stdin)
+names = [t["name"] for p in meta["packages"] for t in p["targets"] if "bin" in t["kind"]]
+dupes = [n for n, c in collections.Counter(names).items() if c > 1]
+if dupes:
+    sys.exit("colliding binary names: " + ", ".join(sorted(dupes)))
+print("bins: " + ", ".join(sorted(names)))
+'
 
         echo ""
         echo "--- Rust: cargo test (functional tests) ---"
@@ -252,7 +305,12 @@ if ! $NO_CLEANUP; then
     echo "--- Clean up ---"
     if $RUN_RUST; then
         rm -rf tests/rust/tested_project/*
-        rm -rf tests/rust/target
+        # `tests/rust/target` is deliberately kept: it now holds the Teksilo and
+        # Slint dependency trees, and wiping it makes every local run a cold
+        # rebuild. It is gitignored. Use --deep-clean to remove it.
+        if $DEEP_CLEAN; then
+            rm -rf tests/rust/target
+        fi
     fi
     if $RUN_CPPQT; then
         rm -rf tests/cpp-qt/build

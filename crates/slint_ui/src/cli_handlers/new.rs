@@ -146,8 +146,14 @@ fn prompt_options(language: &LanguageOption) -> Result<Vec<String>> {
     require_interactive("--options")?;
     let (available, default) = match language {
         LanguageOption::Rust => (
-            vec!["rust_cli", "rust_slint", "rust_ios", "rust_android"],
-            "rust_cli",
+            vec![
+                "rust_teksilo",
+                "rust_cli",
+                "rust_slint",
+                "rust_ios",
+                "rust_android",
+            ],
+            "rust_teksilo",
         ),
         LanguageOption::CppQt => (vec!["cpp_qt_qtquick", "cpp_qt_qtwidgets"], "cpp_qt_qtquick"),
     };

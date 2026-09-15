@@ -1,5 +1,5 @@
 schema:
-  version: 5
+  version: 6
 global:
   language: rust
   application_name: Seventeen
@@ -86,6 +86,7 @@ entities:
 features: []
 ui:
   rust_cli: true
+  rust_teksilo: true
   rust_slint: true
   cpp_qt_qtquick: true
   cpp_qt_qtwidgets: true

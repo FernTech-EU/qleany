@@ -302,6 +302,11 @@ pub const WARNING_RULES: &[Rule] = &[
         severity: "warning",
         description: "DTO should have at least one field",
     },
+    Rule {
+        id: "W05",
+        severity: "warning",
+        description: "A rust_* UI flag is enabled but global.language is not 'rust'",
+    },
 ];
 
 // Rust reserved keywords (2024 edition) + reserved for future use
@@ -648,23 +653,46 @@ impl CheckUseCase {
         let is_rust_language = global
             .as_ref()
             .is_some_and(|g| g.language.eq_ignore_ascii_case("rust"));
-        let has_cpp_target = if is_rust_language {
-            false
-        } else {
+        // Fetched once: it feeds both the C++-target detection above and the
+        // UI-flag/language consistency warning (W05) below.
+        let ui = {
             let ui_ids = uow.get_workspace_relationship(
                 &workspace_id,
                 &common::direct_access::workspace::WorkspaceRelationshipField::UserInterface,
             )?;
-            if let Some(ui_id) = ui_ids.first() {
-                if let Some(ui) = uow.get_user_interface(ui_id)? {
-                    ui.cpp_qt_qtwidgets || ui.cpp_qt_qtquick
-                } else {
-                    false
-                }
-            } else {
-                false
+            match ui_ids.first() {
+                Some(ui_id) => uow.get_user_interface(ui_id)?,
+                None => None,
             }
         };
+        let has_cpp_target = if is_rust_language {
+            false
+        } else {
+            ui.as_ref()
+                .is_some_and(|u| u.cpp_qt_qtwidgets || u.cpp_qt_qtquick)
+        };
+
+        // W05 — a rust_* flag on a non-Rust manifest generates nothing. A
+        // warning rather than a critical, deliberately: the shipped C++/Qt
+        // examples already carry `rust_slint: true`, and `qleany check` has
+        // always accepted them.
+        if let Some(u) = &ui
+            && !is_rust_language
+        {
+            for (flag, name) in [
+                (u.rust_teksilo, "rust_teksilo"),
+                (u.rust_slint, "rust_slint"),
+                (u.rust_cli, "rust_cli"),
+                (u.rust_ios, "rust_ios"),
+                (u.rust_android, "rust_android"),
+            ] {
+                if flag {
+                    warnings.push(format!(
+                        "UI: {name} is enabled but global.language is not 'rust'; that UI will not be generated"
+                    ));
+                }
+            }
+        }
 
         // ── Entities ──
 

@@ -42,6 +42,14 @@ export component UserInterfaceTab inherits Rectangle {
                     }
 
                     CheckBox {
+                        text: "Teksilo (recommended)";
+                        checked <=> UserInterfaceTabState.rust_teksilo;
+                        toggled => {
+                            UserInterfaceTabState.rust_teksilo_changed(self.checked);
+                        }
+                    }
+
+                    CheckBox {
                         text: "Slint";
                         checked <=> UserInterfaceTabState.rust_slint;
                         toggled => {

@@ -1,6 +1,6 @@
 ---
 schema:
-  version: 5
+  version: 6
 global:
   language: {{ language }}
   application_name: {{ application_name }}
@@ -115,6 +115,7 @@ features:
         type: string
 ui:
   rust_cli: {{ rust_cli }}
+  rust_teksilo: {{ rust_teksilo }}
   rust_slint: {{ rust_slint }}
   cpp_qt_qtwidgets: {{ cpp_qt_qtwidgets }}
   cpp_qt_qtquick: {{ cpp_qt_qtquick }}

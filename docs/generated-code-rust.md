@@ -424,17 +424,60 @@ crates/
 │   │   │   └── ...
 │   │   └── lib.rs
 │   └── Cargo.toml
-└── inventory_management/           # custom feature ( = group of use cases)
+├── inventory_management/           # custom feature ( = group of use cases)
+│   ├── src/
+│   │   ├── inventory_management_controller.rs
+│   │   ├── dtos.rs
+│   │   ├── units_of_work.rs
+│   │   ├── units_of_work/          # ← adapt the unit of works with macros here
+│   │   │   └── ...
+│   │   ├── use_cases.rs
+│   │   ├── use_cases/              # ← You implement the business logic here
+│   │   │   └── ...
+│   │   └── lib.rs
+│   └── Cargo.toml
+└── teksilo_ui/                     # when ui.rust_teksilo is set
     ├── src/
-    │   ├── inventory_management_controller.rs
-    │   ├── dtos.rs
-    │   ├── units_of_work.rs
-    │   ├── units_of_work/          # ← adapt the unit of works with macros here
-    │   │   └── ...
-    │   ├── use_cases.rs
-    │   ├── use_cases/              # ← You implement the business logic here
-    │   │   └── ...
-    │   └── lib.rs
+    │   ├── main.rs
+    │   ├── lib.rs                  # builds and runs the app
+    │   ├── event_source.rs         # backend events → the UI thread
+    │   ├── session.rs              # every single and model, wired
+    │   ├── undo_redo.rs
+    │   ├── app.rs                  # ← the demo window; replace with your UI
+    │   ├── singles.rs
+    │   ├── singles/
+    │   │   └── single_car.rs       # one per single_model entity
+    │   ├── models.rs
+    │   └── models/
+    │       ├── coalesced_reload.rs
+    │       └── root_cars_list_model.rs  # one per list_model relationship
     └── Cargo.toml
 
 ```
+
+### The Teksilo UI crate
+
+Generated when `ui.rust_teksilo` is set. It talks only to the `frontend` crate,
+so it duplicates no backend access.
+
+**Singles** (`singles/single_{entity}.rs`) — one per entity marked
+`single_model: true`. A single holds one entity by id and exposes each scalar
+field as a two-way `Signal`, alongside `loading_status`, `error_message` and
+`dirty`. It refreshes itself when that entity's `Updated` event arrives and
+writes edits back through `save()`, which is a read-modify-write so `created_at`
+and uuids are carried rather than re-derived.
+
+**List models** (`models/{entity}_{field}_list_model.rs`) — one per relationship
+field marked `list_model: true`. Rows are read through the *owner's*
+relationship, never `get_all_*`: the store is shared, so `get_all` would merge
+every other owner's children and lose the order the user chose.
+
+**Mocks** — each single and list model carries a second implementation behind
+the crate's `mocks` feature, selected by `#[cfg]` with an identical public
+surface, so no `#[cfg]` leaks into consuming code. `cargo run --features mocks`
+renders the UI against fabricated data with no backend. Only building both
+feature modes keeps the two arms in step, so check both in CI.
+
+**Wiring** — a subscription made from a widget's `build` lasts exactly one build
+cycle, so `Session::wire_all(ctx)` must be called from `build` on *every* build.
+Wiring once leaves the UI silently deaf after the first rebuild.

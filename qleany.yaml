@@ -1,6 +1,6 @@
 ---
 schema:
-  version: 5
+  version: 6
 global:
   language: rust
   application_name: Qleany
@@ -371,6 +371,9 @@ entities:
     type: boolean
     strong: true
   - name: rust_slint
+    type: boolean
+    strong: true
+  - name: rust_teksilo
     type: boolean
     strong: true
   - name: cpp_qt_qtwidgets
