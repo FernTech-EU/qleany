@@ -90,27 +90,27 @@ use {{ feature.snake_name }}::{
 {%- endfor %}
 
 #[derive(uniffi::Enum, Clone, Debug, PartialEq)]
-pub enum Mobile{{ enum_name }} {
+pub enum Mobile{{ feature.pascal_name }}{{ enum_name }} {
     {%- for pv in enum_parsed_variants %}
     {{ pv.mobile_line }},
     {%- endfor %}
 }
 
-impl From<Mobile{{ enum_name }}> for {{ feature.snake_name }}::{{ enum_name }} {
-    fn from(m: Mobile{{ enum_name }}) -> Self {
+impl From<Mobile{{ feature.pascal_name }}{{ enum_name }}> for {{ feature.snake_name }}::{{ enum_name }} {
+    fn from(m: Mobile{{ feature.pascal_name }}{{ enum_name }}) -> Self {
         match m {
             {%- for pv in enum_parsed_variants %}
-            Mobile{{ enum_name }}::{{ pv.match_pattern }} => {{ feature.snake_name }}::{{ enum_name }}::{{ pv.mobile_to_core_construct }},
+            Mobile{{ feature.pascal_name }}{{ enum_name }}::{{ pv.match_pattern }} => {{ feature.snake_name }}::{{ enum_name }}::{{ pv.mobile_to_core_construct }},
             {%- endfor %}
         }
     }
 }
 
-impl From<{{ feature.snake_name }}::{{ enum_name }}> for Mobile{{ enum_name }} {
+impl From<{{ feature.snake_name }}::{{ enum_name }}> for Mobile{{ feature.pascal_name }}{{ enum_name }} {
     fn from(e: {{ feature.snake_name }}::{{ enum_name }}) -> Self {
         match e {
             {%- for pv in enum_parsed_variants %}
-            {{ feature.snake_name }}::{{ enum_name }}::{{ pv.match_pattern }} => Mobile{{ enum_name }}::{{ pv.core_to_mobile_construct }},
+            {{ feature.snake_name }}::{{ enum_name }}::{{ pv.match_pattern }} => Mobile{{ feature.pascal_name }}{{ enum_name }}::{{ pv.core_to_mobile_construct }},
             {%- endfor %}
         }
     }
@@ -126,7 +126,7 @@ impl From<{{ feature.snake_name }}::{{ enum_name }}> for Mobile{{ enum_name }} {
 {%- set_global generated_dtos = generated_dtos | concat(with=uc.dto_in.pascal_name) %}
 
 #[derive(uniffi::Record, Clone, Debug)]
-pub struct Mobile{{ uc.dto_in.pascal_name }} {
+pub struct Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }} {
     {%- for f in uc.dto_in.fields %}
     pub {{ f.snake_name }}:
     {%- if f.inner.is_list %} Vec<
@@ -139,7 +139,7 @@ pub struct Mobile{{ uc.dto_in.pascal_name }} {
     {%- elif f.inner.field_type == "String" %}String
     {%- elif f.inner.field_type == "Uuid" %}String
     {%- elif f.inner.field_type == "DateTime" %}MobileDateTime
-    {%- elif f.inner.field_type == "Enum" %}Mobile{{ f.inner.enum_name }}
+    {%- elif f.inner.field_type == "Enum" %}Mobile{{ feature.pascal_name }}{{ f.inner.enum_name }}
     {%- endif %}
     {%- if f.inner.is_list %}>
     {%- elif f.inner.optional %}>
@@ -147,8 +147,8 @@ pub struct Mobile{{ uc.dto_in.pascal_name }} {
     {%- endfor %}
 }
 
-impl From<Mobile{{ uc.dto_in.pascal_name }}> for {{ uc.dto_in.pascal_name }} {
-    fn from(m: Mobile{{ uc.dto_in.pascal_name }}) -> Self {
+impl From<Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}> for {{ uc.dto_in.pascal_name }} {
+    fn from(m: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}) -> Self {
         {{ uc.dto_in.pascal_name }} {
             {%- for f in uc.dto_in.fields %}
             {{ f.snake_name }}:
@@ -174,9 +174,9 @@ impl From<Mobile{{ uc.dto_in.pascal_name }}> for {{ uc.dto_in.pascal_name }} {
     }
 }
 
-impl From<{{ uc.dto_in.pascal_name }}> for Mobile{{ uc.dto_in.pascal_name }} {
+impl From<{{ uc.dto_in.pascal_name }}> for Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }} {
     fn from(d: {{ uc.dto_in.pascal_name }}) -> Self {
-        Mobile{{ uc.dto_in.pascal_name }} {
+        Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }} {
             {%- for f in uc.dto_in.fields %}
             {{ f.snake_name }}:
             {%- if f.inner.field_type == "DateTime" %}
@@ -208,7 +208,7 @@ impl From<{{ uc.dto_in.pascal_name }}> for Mobile{{ uc.dto_in.pascal_name }} {
 {%- set_global generated_dtos = generated_dtos | concat(with=uc.dto_out.pascal_name) %}
 
 #[derive(uniffi::Record, Clone, Debug)]
-pub struct Mobile{{ uc.dto_out.pascal_name }} {
+pub struct Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }} {
     {%- for f in uc.dto_out.fields %}
     pub {{ f.snake_name }}:
     {%- if f.inner.is_list %} Vec<
@@ -221,7 +221,7 @@ pub struct Mobile{{ uc.dto_out.pascal_name }} {
     {%- elif f.inner.field_type == "String" %}String
     {%- elif f.inner.field_type == "Uuid" %}String
     {%- elif f.inner.field_type == "DateTime" %}MobileDateTime
-    {%- elif f.inner.field_type == "Enum" %}Mobile{{ f.inner.enum_name }}
+    {%- elif f.inner.field_type == "Enum" %}Mobile{{ feature.pascal_name }}{{ f.inner.enum_name }}
     {%- endif %}
     {%- if f.inner.is_list %}>
     {%- elif f.inner.optional %}>
@@ -229,8 +229,8 @@ pub struct Mobile{{ uc.dto_out.pascal_name }} {
     {%- endfor %}
 }
 
-impl From<Mobile{{ uc.dto_out.pascal_name }}> for {{ uc.dto_out.pascal_name }} {
-    fn from(m: Mobile{{ uc.dto_out.pascal_name }}) -> Self {
+impl From<Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}> for {{ uc.dto_out.pascal_name }} {
+    fn from(m: Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}) -> Self {
         {{ uc.dto_out.pascal_name }} {
             {%- for f in uc.dto_out.fields %}
             {{ f.snake_name }}:
@@ -256,9 +256,9 @@ impl From<Mobile{{ uc.dto_out.pascal_name }}> for {{ uc.dto_out.pascal_name }} {
     }
 }
 
-impl From<{{ uc.dto_out.pascal_name }}> for Mobile{{ uc.dto_out.pascal_name }} {
+impl From<{{ uc.dto_out.pascal_name }}> for Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }} {
     fn from(d: {{ uc.dto_out.pascal_name }}) -> Self {
-        Mobile{{ uc.dto_out.pascal_name }} {
+        Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }} {
             {%- for f in uc.dto_out.fields %}
             {{ f.snake_name }}:
             {%- if f.inner.field_type == "DateTime" %}
@@ -299,7 +299,7 @@ impl MobileBackend {
     pub fn {{ feature.snake_name }}_{{ uc.snake_name }}(
         &self,
         {%- if uc.dto_in %}
-        dto: Mobile{{ uc.dto_in.pascal_name }},
+        dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }},
         {%- endif %}
     ) -> Result<String, MobileError> {
         {%- if uc.dto_in %}
@@ -335,13 +335,13 @@ impl MobileBackend {
     pub fn {{ feature.snake_name }}_get_{{ uc.snake_name }}_result(
         &self,
         operation_id: String,
-    ) -> Result<Option<{% if uc.dto_out %}Mobile{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}>, MobileError> {
+    ) -> Result<Option<{% if uc.dto_out %}Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}>, MobileError> {
         frontend::commands::{{ feature.snake_name }}_commands::get_{{ uc.snake_name }}_result(
             &self.ctx,
             &operation_id,
         )
         {%- if uc.dto_out %}
-        .map(|opt| opt.map(Mobile{{ uc.dto_out.pascal_name }}::from))
+        .map(|opt| opt.map(Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}::from))
         {%- endif %}
         .map_err(MobileError::from)
     }
@@ -353,9 +353,9 @@ impl MobileBackend {
         &self,
         stack_id: Option<u64>,
         {%- if uc.dto_in %}
-        dto: Mobile{{ uc.dto_in.pascal_name }},
+        dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }},
         {%- endif %}
-    ) -> Result<{% if uc.dto_out %}Mobile{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}, MobileError> {
+    ) -> Result<{% if uc.dto_out %}Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}, MobileError> {
         {%- if uc.dto_in %}
         let inner: {{ uc.dto_in.pascal_name }} = dto.into();
         {%- endif %}
@@ -367,7 +367,7 @@ impl MobileBackend {
             {%- endif %}
         )
         {%- if uc.dto_out %}
-        .map(Mobile{{ uc.dto_out.pascal_name }}::from)
+        .map(Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}::from)
         {%- endif %}
         .map_err(MobileError::from)
     }
@@ -378,9 +378,9 @@ impl MobileBackend {
     pub fn {{ feature.snake_name }}_{{ uc.snake_name }}(
         &self,
         {%- if uc.dto_in %}
-        dto: Mobile{{ uc.dto_in.pascal_name }},
+        dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }},
         {%- endif %}
-    ) -> Result<{% if uc.dto_out %}Mobile{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}, MobileError> {
+    ) -> Result<{% if uc.dto_out %}Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}{% else %}(){% endif %}, MobileError> {
         {%- if uc.dto_in %}
         let inner: {{ uc.dto_in.pascal_name }} = dto.into();
         {%- endif %}
@@ -391,7 +391,7 @@ impl MobileBackend {
             {%- endif %}
         )
         {%- if uc.dto_out %}
-        .map(Mobile{{ uc.dto_out.pascal_name }}::from)
+        .map(Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}::from)
         {%- endif %}
         .map_err(MobileError::from)
     }

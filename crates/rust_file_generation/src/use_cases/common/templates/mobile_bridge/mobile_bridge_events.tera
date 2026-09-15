@@ -38,6 +38,10 @@ pub enum MobileEventKind {
     // Undo/redo
     UndoPerformed,
     RedoPerformed,
+    /// A stack's history changed other than by undoing or redoing it: a command
+    /// pushed, merged, or a stack cleared. Without it a mobile UI cannot learn
+    /// that "can undo" just became true.
+    UndoStackChanged,
     CompositeBegin,
     CompositeEnd,
     CompositeCancelled,
@@ -68,6 +72,7 @@ impl From<FlatEventKind> for MobileEventKind {
             {%- endfor %}
             FlatEventKind::UndoPerformed => MobileEventKind::UndoPerformed,
             FlatEventKind::RedoPerformed => MobileEventKind::RedoPerformed,
+            FlatEventKind::UndoStackChanged => MobileEventKind::UndoStackChanged,
             FlatEventKind::CompositeBegin => MobileEventKind::CompositeBegin,
             FlatEventKind::CompositeEnd => MobileEventKind::CompositeEnd,
             FlatEventKind::CompositeCancelled => MobileEventKind::CompositeCancelled,

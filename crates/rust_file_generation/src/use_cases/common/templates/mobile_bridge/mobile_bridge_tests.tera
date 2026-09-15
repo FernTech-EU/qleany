@@ -42,7 +42,7 @@ mod tests {
     fn test_set_and_remove_event_listener() {
         let backend = MobileBackend::new();
         let events = Arc::new(Mutex::new(Vec::new()));
-        let listener = Arc::new(TestEventListener {
+        let listener = Box::new(TestEventListener {
             events: Arc::clone(&events),
         });
         // Setting a listener should not panic
@@ -56,7 +56,7 @@ mod tests {
     fn test_event_listener_receives_events() {
         let backend = MobileBackend::new();
         let events = Arc::new(Mutex::new(Vec::new()));
-        let listener = Arc::new(TestEventListener {
+        let listener = Box::new(TestEventListener {
             events: Arc::clone(&events),
         });
         backend.set_event_listener(listener);

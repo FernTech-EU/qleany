@@ -4,6 +4,48 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v1.11.0 to next — Mobile bridge fixes
+
+**Qleany version**: unreleased
+
+### Breaking: mobile feature DTO and enum types are namespaced by feature
+
+A mobile type generated from a **feature** use case now carries the feature name:
+
+```diff
+- MobileCreateProjectDto          // from project_management
++ MobileProjectManagementCreateProjectDto
+
+- MobileProjectStatus             // from a project_management DTO
++ MobileProjectManagementProjectStatus
+```
+
+Types generated from an **entity** are unchanged — `MobileProjectDto`,
+`MobileCreateProjectDto` (the direct-access one), `MobileProjectStatus` (the
+entity enum) all keep their names.
+
+**Why.** An entity and a feature legitimately declare different types of the same
+name: the direct-access CRUD contract and a use-case boundary contract. That
+distinction is the architecture working — a feature's DTO is free to diverge from
+the entity it was modelled on. But uniffi has one flat namespace and, in 0.31, no
+attribute to rename an exported type, so the Rust type name *is* the exported
+name and it has to be unique crate-wide.
+
+Before this change the two collided. `MobileProjectStatus` and
+`MobileTaskDifficulty` failed to link at all; `MobileCreateProjectDto` degraded
+more quietly to an ambiguous glob re-export, leaving the name unusable from the
+crate root. Generated mobile projects were broken either way.
+
+The feature side is prefixed rather than the entity side because entity types are
+the stable direct-access surface and fewer names move. It is applied to **every**
+feature type, not only the colliding ones: a collision-triggered rename would
+silently move an already-shipped type the day an entity gained a same-named DTO.
+
+Update call sites mechanically — the feature name in PascalCase goes between
+`Mobile` and the type name.
+
+---
+
 ## v1.10.0 to v1.11.0 — Undo entries gain identity: sequences, labels, an untracked stack
 
 **Qleany version**: v1.11.0

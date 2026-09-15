@@ -282,7 +282,7 @@ suspend fun MobileBackend.move{{ entity.pascal_name }}RelationshipAsync(
 /** Start {{ uc.snake_name }} long operation asynchronously. */
 suspend fun MobileBackend.{{ full_uc_name | camelCase }}Async(
     {%- if uc.dto_in %}
-    dto: Mobile{{ uc.dto_in.pascal_name }}
+    dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}
     {%- endif %}
 ): String =
     withContext(Dispatchers.IO) {
@@ -296,15 +296,15 @@ suspend fun MobileBackend.{{ full_uc_name | camelCase }}Async(
 /** Get the result of a {{ uc.snake_name }} operation asynchronously. */
 suspend fun MobileBackend.{{ feature.snake_name | camelCase }}Get{{ uc.pascal_name }}ResultAsync(
     operationId: String
-): {% if uc.dto_out %}Mobile{{ uc.dto_out.pascal_name }}?{% else %}Unit{% endif %} =
+): {% if uc.dto_out %}Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}?{% else %}Unit{% endif %} =
     withContext(Dispatchers.IO) { {{ feature.snake_name | camelCase }}Get{{ uc.pascal_name }}Result(operationId) }
 
 {%- elif uc.inner.undoable %}
 
 suspend fun MobileBackend.{{ full_uc_name | camelCase }}Async(
     stackId: ULong?{% if uc.dto_in %},
-    dto: Mobile{{ uc.dto_in.pascal_name }}{% endif %}
-): {% if uc.dto_out %}Mobile{{ uc.dto_out.pascal_name }}{% else %}Unit{% endif %} =
+    dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}{% endif %}
+): {% if uc.dto_out %}Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}{% else %}Unit{% endif %} =
     withContext(Dispatchers.IO) {
         {{ full_uc_name | camelCase }}(
             stackId{% if uc.dto_in %},
@@ -316,9 +316,9 @@ suspend fun MobileBackend.{{ full_uc_name | camelCase }}Async(
 
 suspend fun MobileBackend.{{ full_uc_name | camelCase }}Async(
     {%- if uc.dto_in %}
-    dto: Mobile{{ uc.dto_in.pascal_name }}
+    dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}
     {%- endif %}
-): {% if uc.dto_out %}Mobile{{ uc.dto_out.pascal_name }}{% else %}Unit{% endif %} =
+): {% if uc.dto_out %}Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}{% else %}Unit{% endif %} =
     withContext(Dispatchers.IO) {
         {{ full_uc_name | camelCase }}(
             {%- if uc.dto_in %}

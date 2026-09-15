@@ -313,7 +313,7 @@ extension MobileBackend {
     /// Start {{ uc.snake_name }} long operation asynchronously.
     func {{ full_uc_name | camelCase }}Async(
         {%- if uc.dto_in %}
-        dto: Mobile{{ uc.dto_in.pascal_name }}
+        dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}
         {%- endif %}
     ) async throws -> String {
         try await Task.detached {
@@ -328,7 +328,7 @@ extension MobileBackend {
     /// Get the result of a {{ uc.snake_name }} operation asynchronously.
     func {{ feature.snake_name | camelCase }}Get{{ uc.pascal_name }}ResultAsync(
         operationId: String
-    ) async throws -> {% if uc.dto_out %}Mobile{{ uc.dto_out.pascal_name }}?{% else %}(){% endif %} {
+    ) async throws -> {% if uc.dto_out %}Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}?{% else %}(){% endif %} {
         try await Task.detached {
             try self.{{ feature.snake_name | camelCase }}Get{{ uc.pascal_name }}Result(operationId: operationId)
         }.value
@@ -338,8 +338,8 @@ extension MobileBackend {
 
     func {{ full_uc_name | camelCase }}Async(
         stackId: UInt64?{% if uc.dto_in %},
-        dto: Mobile{{ uc.dto_in.pascal_name }}{% endif %}
-    ) async throws{% if uc.dto_out %} -> Mobile{{ uc.dto_out.pascal_name }}{% endif %} {
+        dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}{% endif %}
+    ) async throws{% if uc.dto_out %} -> Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}{% endif %} {
         try await Task.detached {
             try self.{{ full_uc_name | camelCase }}(
                 stackId: stackId{% if uc.dto_in %},
@@ -352,9 +352,9 @@ extension MobileBackend {
 
     func {{ full_uc_name | camelCase }}Async(
         {%- if uc.dto_in %}
-        dto: Mobile{{ uc.dto_in.pascal_name }}
+        dto: Mobile{{ feature.pascal_name }}{{ uc.dto_in.pascal_name }}
         {%- endif %}
-    ) async throws{% if uc.dto_out %} -> Mobile{{ uc.dto_out.pascal_name }}{% endif %} {
+    ) async throws{% if uc.dto_out %} -> Mobile{{ feature.pascal_name }}{{ uc.dto_out.pascal_name }}{% endif %} {
         try await Task.detached {
             try self.{{ full_uc_name | camelCase }}(
                 {%- if uc.dto_in %}

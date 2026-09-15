@@ -16,7 +16,10 @@ readme = "../../README.md"
 publish = true
 
 [lib]
-crate-type = ["cdylib", "staticlib"]
+# `lib` alongside the FFI kinds: without an rlib the crate's own
+# `tests/integration_tests.rs` cannot link it, so the generated test suite did
+# not compile. `cdylib` is what Android loads, `staticlib` what iOS links.
+crate-type = ["lib", "cdylib", "staticlib"]
 name = "mobile_bridge"
 
 [dependencies]
