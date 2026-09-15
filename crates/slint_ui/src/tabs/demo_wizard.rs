@@ -262,7 +262,11 @@ fn run_demo_generation(
     };
 
     set_progress(app_weak, 10.0, "Creating manifest...");
-    handling_manifest_controller::create(&app_context.db_context, &create_dto)?;
+    handling_manifest_controller::create(
+        &app_context.db_context,
+        &app_context.event_hub,
+        &create_dto,
+    )?;
 
     let manifest_lines = std::fs::read_to_string(&manifest_path)?.lines().count();
 

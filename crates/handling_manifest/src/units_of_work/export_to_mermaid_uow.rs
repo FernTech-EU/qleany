@@ -11,20 +11,25 @@ use common::entities::{
     Dto, DtoField, Entity, Feature, Field, Global, Relationship, Root, UseCase, UserInterface,
     Workspace,
 };
+use common::event::EventHub;
 use common::types::EntityId;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 // Unit of work for ExportToMermaid
 
 pub struct ExportToMermaidUnitOfWork {
     context: DbContext,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
     transaction: RefCell<Option<Transaction>>,
 }
 
 impl ExportToMermaidUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         ExportToMermaidUnitOfWork {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
             transaction: RefCell::new(None),
         }
     }
@@ -84,18 +89,24 @@ impl ExportToMermaidUnitOfWorkTrait for ExportToMermaidUnitOfWork {}
 
 pub struct ExportToMermaidUnitOfWorkFactory {
     context: DbContext,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl ExportToMermaidUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         ExportToMermaidUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl ExportToMermaidUnitOfWorkFactoryTrait for ExportToMermaidUnitOfWorkFactory {
     fn create(&self) -> Box<dyn ExportToMermaidUnitOfWorkTrait> {
-        Box::new(ExportToMermaidUnitOfWork::new(&self.context))
+        Box::new(ExportToMermaidUnitOfWork::new(
+            &self.context,
+            &self.event_hub,
+        ))
     }
 }

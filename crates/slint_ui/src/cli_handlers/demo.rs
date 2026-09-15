@@ -72,7 +72,11 @@ pub fn execute(
         options,
     };
 
-    let return_dto = handling_manifest_controller::create(&app_context.db_context, &create_dto)?;
+    let return_dto = handling_manifest_controller::create(
+        &app_context.db_context,
+        &app_context.event_hub,
+        &create_dto,
+    )?;
 
     output.success(&format!("Created {}", return_dto.manifest_path));
 

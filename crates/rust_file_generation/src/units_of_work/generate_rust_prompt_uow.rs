@@ -12,20 +12,25 @@ use common::entities::{
     Dto, DtoField, Entity, Feature, Field, File, Global, Relationship, Root, System, UseCase,
     UserInterface, Workspace,
 };
+use common::event::EventHub;
 use common::types::EntityId;
 use std::cell::RefCell;
+use std::sync::Arc;
 // Unit of work for GenerateRustPrompt
 
 pub struct GenerateRustPromptUnitOfWork {
     context: DbContext,
     transaction: RefCell<Option<Transaction>>,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateRustPromptUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateRustPromptUnitOfWork {
             context: db_context.clone(),
             transaction: RefCell::new(None),
+            event_hub: event_hub.clone(),
         }
     }
 }
@@ -100,18 +105,23 @@ impl GenerationOps for GenerateRustPromptUnitOfWork {}
 
 pub struct GenerateRustPromptUnitOfWorkFactory {
     context: DbContext,
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateRustPromptUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateRustPromptUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl GenerateRustPromptUnitOfWorkFactoryTrait for GenerateRustPromptUnitOfWorkFactory {
     fn create(&self) -> Box<dyn GenerateRustPromptUnitOfWorkTrait> {
-        Box::new(GenerateRustPromptUnitOfWork::new(&self.context))
+        Box::new(GenerateRustPromptUnitOfWork::new(
+            &self.context,
+            &self.event_hub,
+        ))
     }
 }

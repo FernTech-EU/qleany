@@ -4,19 +4,24 @@ use crate::use_cases::create_uc::{CreateUnitOfWorkFactoryTrait, CreateUnitOfWork
 use anyhow::{Ok, Result};
 use common::database::QueryUnitOfWork;
 use common::database::{db_context::DbContext, transactions::Transaction};
+use common::event::EventHub;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 // Unit of work for Create
 
 pub struct CreateUnitOfWork {
     context: DbContext,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
     transaction: RefCell<Option<Transaction>>,
 }
 
 impl CreateUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         CreateUnitOfWork {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
             transaction: RefCell::new(None),
         }
     }
@@ -52,18 +57,21 @@ impl CreateUnitOfWorkTrait for CreateUnitOfWork {}
 
 pub struct CreateUnitOfWorkFactory {
     context: DbContext,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl CreateUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         CreateUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl CreateUnitOfWorkFactoryTrait for CreateUnitOfWorkFactory {
     fn create(&self) -> Box<dyn CreateUnitOfWorkTrait> {
-        Box::new(CreateUnitOfWork::new(&self.context))
+        Box::new(CreateUnitOfWork::new(&self.context, &self.event_hub))
     }
 }

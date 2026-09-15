@@ -8,21 +8,26 @@ use anyhow::{Ok, Result};
 use common::database::QueryUnitOfWork;
 use common::database::{db_context::DbContext, transactions::Transaction};
 use common::entities::{File, Root, Workspace};
+use common::event::EventHub;
 use common::types::EntityId;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 // Unit of work for GetFileDiff
 
 pub struct GetFileDiffUnitOfWork {
     context: DbContext,
     transaction: RefCell<Option<Transaction>>,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl GetFileDiffUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GetFileDiffUnitOfWork {
             context: db_context.clone(),
             transaction: RefCell::new(None),
+            event_hub: event_hub.clone(),
         }
     }
 }
@@ -51,18 +56,20 @@ impl GetFileDiffUnitOfWorkTrait for GetFileDiffUnitOfWork {}
 
 pub struct GetFileDiffUnitOfWorkFactory {
     context: DbContext,
+    event_hub: Arc<EventHub>,
 }
 
 impl GetFileDiffUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GetFileDiffUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl GetFileDiffUnitOfWorkFactoryTrait for GetFileDiffUnitOfWorkFactory {
     fn create(&self) -> Box<dyn GetFileDiffUnitOfWorkTrait> {
-        Box::new(GetFileDiffUnitOfWork::new(&self.context))
+        Box::new(GetFileDiffUnitOfWork::new(&self.context, &self.event_hub))
     }
 }

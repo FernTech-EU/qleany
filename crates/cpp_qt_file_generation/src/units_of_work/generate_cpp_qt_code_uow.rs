@@ -18,19 +18,24 @@ use common::entities::System;
 use common::entities::UseCase;
 use common::entities::UserInterface;
 use common::entities::Workspace;
+use common::event::EventHub;
 use common::types::EntityId;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 pub struct GenerateCppQtCodeUnitOfWork {
     context: DbContext,
     transaction: RefCell<Option<Transaction>>,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateCppQtCodeUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateCppQtCodeUnitOfWork {
             context: db_context.clone(),
             transaction: RefCell::new(None),
+            event_hub: event_hub.clone(),
         }
     }
 }
@@ -95,18 +100,23 @@ impl GenerationOps for GenerateCppQtCodeUnitOfWork {}
 
 pub struct GenerateCppQtCodeUnitOfWorkFactory {
     context: DbContext,
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateCppQtCodeUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateCppQtCodeUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl GenerateCppQtCodeUnitOfWorkFactoryTrait for GenerateCppQtCodeUnitOfWorkFactory {
     fn create(&self) -> Box<dyn GenerateCppQtCodeUnitOfWorkTrait> {
-        Box::new(GenerateCppQtCodeUnitOfWork::new(&self.context))
+        Box::new(GenerateCppQtCodeUnitOfWork::new(
+            &self.context,
+            &self.event_hub,
+        ))
     }
 }

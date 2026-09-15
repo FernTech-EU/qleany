@@ -18,19 +18,24 @@ use common::entities::System;
 use common::entities::UseCase;
 use common::entities::UserInterface;
 use common::entities::Workspace;
+use common::event::EventHub;
 use common::types::EntityId;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 pub struct GenerateRustCodeUnitOfWork {
     context: DbContext,
     transaction: RefCell<Option<Transaction>>,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateRustCodeUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateRustCodeUnitOfWork {
             context: db_context.clone(),
             transaction: RefCell::new(None),
+            event_hub: event_hub.clone(),
         }
     }
 }
@@ -95,18 +100,23 @@ impl GenerationOps for GenerateRustCodeUnitOfWork {}
 
 pub struct GenerateRustCodeUnitOfWorkFactory {
     context: DbContext,
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateRustCodeUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateRustCodeUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl GenerateRustCodeUnitOfWorkFactoryTrait for GenerateRustCodeUnitOfWorkFactory {
     fn create(&self) -> Box<dyn GenerateRustCodeUnitOfWorkTrait> {
-        Box::new(GenerateRustCodeUnitOfWork::new(&self.context))
+        Box::new(GenerateRustCodeUnitOfWork::new(
+            &self.context,
+            &self.event_hub,
+        ))
     }
 }

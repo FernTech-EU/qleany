@@ -20,7 +20,7 @@ pub fn save(ctx: &AppContext, dto: &SaveDto) -> Result<(), String> {
 }
 
 pub fn create(ctx: &AppContext, dto: &CreateDto) -> Result<CreateReturnDto, String> {
-    handling_manifest_controller::create(&ctx.db_context, dto)
+    handling_manifest_controller::create(&ctx.db_context, &ctx.event_hub, dto)
         .map_err(|e| format!("Error while create: {:?}", e))
 }
 

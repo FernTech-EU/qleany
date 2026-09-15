@@ -12,20 +12,25 @@ use common::entities::{
     Dto, DtoField, Entity, Feature, Field, File, Global, Relationship, Root, System, UseCase,
     UserInterface, Workspace,
 };
+use common::event::EventHub;
 use common::types::EntityId;
 use std::cell::RefCell;
+use std::sync::Arc;
 // Unit of work for GenerateCppQtPrompt
 
 pub struct GenerateCppQtPromptUnitOfWork {
     context: DbContext,
     transaction: RefCell<Option<Transaction>>,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateCppQtPromptUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateCppQtPromptUnitOfWork {
             context: db_context.clone(),
             transaction: RefCell::new(None),
+            event_hub: event_hub.clone(),
         }
     }
 }
@@ -101,18 +106,23 @@ impl GenerationOps for GenerateCppQtPromptUnitOfWork {}
 
 pub struct GenerateCppQtPromptUnitOfWorkFactory {
     context: DbContext,
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateCppQtPromptUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateCppQtPromptUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl GenerateCppQtPromptUnitOfWorkFactoryTrait for GenerateCppQtPromptUnitOfWorkFactory {
     fn create(&self) -> Box<dyn GenerateCppQtPromptUnitOfWorkTrait> {
-        Box::new(GenerateCppQtPromptUnitOfWork::new(&self.context))
+        Box::new(GenerateCppQtPromptUnitOfWork::new(
+            &self.context,
+            &self.event_hub,
+        ))
     }
 }

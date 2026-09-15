@@ -30,6 +30,65 @@ Please be respectful and constructive in all interactions. We aim to maintain a 
 5. Test your changes
 6. Submit a pull request
 
+## Regenerating Qleany's own backend
+
+Qleany generates itself from the `qleany.yaml` at the repo root, so a template
+change can be applied to this repo too. That is worth doing — it is how the
+generator dogfoods its own output — but a blanket `qleany generate` **destroys
+this repository**, and the reasons are not obvious.
+
+### Never run a bare `qleany generate` here
+
+Every generated file in this repo reports as `[M]` modified, because the header
+records the generator version and that moves with every release. `generate`
+defaults to modified + new, so a bare run rewrites essentially everything —
+including the 45 **Scaffold** files, which hold every hand-written use-case body
+in the project. Use `generate file <path>`, a nature filter, or the read-only
+`generate --all --temp`.
+
+### What must never be regenerated
+
+| Path | Why |
+|------|-----|
+| `crates/*/src/use_cases/*_uc.rs`, `*/units_of_work/*_uow.rs` | Scaffold. These are Qleany's implementation; the generated form is `unimplemented!()`. |
+| `Cargo.toml` (root) | Marked Aggregate, but hand-maintained: the generated form resets the version to `0.0.1`, the licence to `MIT OR Apache-2.0`, and drops the real package names and crates.io metadata. |
+| `crates/*/Cargo.toml` | Same: the generated form carries only the skeleton dependencies, dropping `tera`, `rayon`, `similar`, `heck`, `include_dir` and the rest. |
+
+### What must be re-applied after regenerating
+
+These live inside generated files, so regeneration drops them. After a regen,
+check each one is still present:
+
+| File | Hand-written addition |
+|------|-----------------------|
+| `crates/common/src/lib.rs` | `pub mod enum_variant_parser;` · `pub mod generator;` |
+| `crates/handling_manifest/src/lib.rs` | `#![recursion_limit = "256"]` — the JSON-schema literal needs it |
+| `crates/{handling_manifest,rust_file_generation,cpp_qt_file_generation,file_generation_shared_steps}/src/use_cases.rs` | `mod common;` — each feature's shared helpers |
+| `crates/handling_manifest/src/dtos.rs` | `CheckRuleDto` |
+| `crates/handling_manifest/src/handling_manifest_controller.rs` | `get_check_rules()` and its `use crate::CheckRuleDto;` |
+| `crates/{rust,cpp_qt}_file_generation/src/*_controller.rs` | `let uc = Generate{Rust,CppQt}CodeUseCase::new(…)` without `mut`: those two use cases are hand-tightened to `execute(&self)`, which the template cannot know |
+
+### The procedure
+
+```bash
+git commit                                   # non-negotiable; regen overwrites
+cargo build --workspace                      # build the generator you will run
+
+qleany generate --all --temp                 # read-only: writes only ./temp/
+diff -r temp/crates crates | less            # review before writing anything
+
+qleany generate -M -i                        # modified Infrastructure
+qleany generate -M -g                        # modified Aggregate
+git checkout -- Cargo.toml crates/*/Cargo.toml   # undo the manifest clobber
+# …re-apply the table above…
+cargo fmt --all
+cargo check --workspace && cargo test --workspace && ./run_tests.sh
+```
+
+Finally, confirm it is a fixed point — regenerate a second time and expect no
+diff. If the second pass changes anything, a template is not stable and that is
+a bug worth fixing before landing.
+
 ## Developer Certificate of Origin
 
 This project uses the [Developer Certificate of Origin (DCO)](DCO.md).

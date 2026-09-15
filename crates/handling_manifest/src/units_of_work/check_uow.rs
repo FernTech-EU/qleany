@@ -8,20 +8,25 @@ use common::entities::{
     Dto, DtoField, Entity, Feature, Field, Global, Relationship, Root, UseCase, UserInterface,
     Workspace,
 };
+use common::event::EventHub;
 use common::types::EntityId;
 use std::cell::RefCell;
+use std::sync::Arc;
 
 // Unit of work for Check
 
 pub struct CheckUnitOfWork {
     context: DbContext,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
     transaction: RefCell<Option<Transaction>>,
 }
 
 impl CheckUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         CheckUnitOfWork {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
             transaction: RefCell::new(None),
         }
     }
@@ -61,18 +66,21 @@ impl CheckUnitOfWorkTrait for CheckUnitOfWork {}
 
 pub struct CheckUnitOfWorkFactory {
     context: DbContext,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
 }
 
 impl CheckUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         CheckUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl CheckUnitOfWorkFactoryTrait for CheckUnitOfWorkFactory {
     fn create(&self) -> Box<dyn CheckUnitOfWorkTrait> {
-        Box::new(CheckUnitOfWork::new(&self.context))
+        Box::new(CheckUnitOfWork::new(&self.context, &self.event_hub))
     }
 }

@@ -10,18 +10,23 @@ use common::entities::Workspace;
 use common::entities::{
     Dto, DtoField, Entity, Feature, Field, File, Global, Relationship, Root, System, UseCase,
 };
+use common::event::EventHub;
 use common::types::EntityId;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 pub struct GenerateRustFilesUnitOfWork {
     context: DbContext,
+    #[allow(dead_code)]
+    event_hub: Arc<EventHub>,
     transaction: Mutex<Option<Transaction>>,
 }
 
 impl GenerateRustFilesUnitOfWork {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateRustFilesUnitOfWork {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
             transaction: Mutex::new(None),
         }
     }
@@ -91,18 +96,23 @@ impl GenerationOps for GenerateRustFilesUnitOfWork {}
 
 pub struct GenerateRustFilesUnitOfWorkFactory {
     context: DbContext,
+    event_hub: Arc<EventHub>,
 }
 
 impl GenerateRustFilesUnitOfWorkFactory {
-    pub fn new(db_context: &DbContext) -> Self {
+    pub fn new(db_context: &DbContext, event_hub: &Arc<EventHub>) -> Self {
         GenerateRustFilesUnitOfWorkFactory {
             context: db_context.clone(),
+            event_hub: event_hub.clone(),
         }
     }
 }
 
 impl GenerateRustFilesUnitOfWorkFactoryTrait for GenerateRustFilesUnitOfWorkFactory {
     fn create(&self) -> Box<dyn GenerateRustFilesUnitOfWorkTrait> {
-        Box::new(GenerateRustFilesUnitOfWork::new(&self.context))
+        Box::new(GenerateRustFilesUnitOfWork::new(
+            &self.context,
+            &self.event_hub,
+        ))
     }
 }
