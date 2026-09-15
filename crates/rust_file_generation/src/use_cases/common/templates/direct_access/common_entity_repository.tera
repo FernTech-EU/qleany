@@ -208,7 +208,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
         // get all strong forward relationship fields
         {% for f in s.entities[e].fields %}
         {%- if f.inner.field_type == "Entity" and f.inner.strong %}
-        let {{ f.snake_name }} = entity.{{ f.snake_name }}.clone();
+        let {{ f.snake_name }} = entity.{{ f.snake_name }}{% if f.is_list %}.clone(){% endif %};
         {%- endif %}
         {%- endfor %}
 
@@ -279,7 +279,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Repository<'a> {
             {%- if f.optional %}
         let {{ f.snake_name }}_ids: Vec<EntityId> = entities
             .iter()
-            .filter_map(|entity| entity.as_ref().and_then(|entity| entity.{{ f.snake_name }}.clone()))
+            .filter_map(|entity| entity.as_ref().and_then(|entity| entity.{{ f.snake_name }}))
             .collect();
             {%- else %}
         let {{ f.snake_name }}_ids: Vec<EntityId> = entities

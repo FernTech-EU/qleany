@@ -42,7 +42,7 @@ impl From<&{{ s.entities[e].pascal_name }}Dto> for {{ s.entities[e].pascal_name 
         {{ s.entities[e].pascal_name }} {
             id: dto.id,
             {%- for f in s.entities[e].fields %}
-            {{ f.snake_name }}: dto.{{ f.snake_name }}.clone(),
+            {{ f.snake_name }}: dto.{{ f.snake_name }}{% if f.is_list or f.inner.field_type == "String" or f.inner.field_type == "Enum" %}.clone(){% endif %},
             {%- endfor %}
         }
     }
@@ -82,7 +82,7 @@ impl From<&Create{{ s.entities[e].pascal_name }}Dto> for {{ s.entities[e].pascal
         {{ s.entities[e].pascal_name }} {
             id: 0,
             {%- for f in s.entities[e].fields %}
-            {{ f.snake_name }}: dto.{{ f.snake_name }}.clone(),
+            {{ f.snake_name }}: dto.{{ f.snake_name }}{% if f.is_list or f.inner.field_type == "String" or f.inner.field_type == "Enum" %}.clone(){% endif %},
             {%- endfor %}
         }
     }
@@ -135,7 +135,7 @@ impl From<&Update{{ s.entities[e].pascal_name }}Dto> for {{ s.entities[e].pascal
         {{ s.entities[e].pascal_name }} {
             id: dto.id,
             {%- for f in s.entities[e].normal_fields %}
-            {{ f.snake_name }}: dto.{{ f.snake_name }}.clone(),
+            {{ f.snake_name }}: dto.{{ f.snake_name }}{% if f.is_list or f.inner.field_type == "String" or f.inner.field_type == "Enum" %}.clone(){% endif %},
             {%- endfor %}
             {%- for f in s.entities[e].fields %}
             {%- if f.inner.field_type == "Entity" %}
