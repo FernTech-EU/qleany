@@ -76,7 +76,7 @@
 //! ## Diagnosing contention: naming both the current holder and the new claimant
 //!
 //! Each slot records not just "held", but who holds it: the owning thread's
-//! [`ThreadId`](std::thread::ThreadId) and name, plus the `site` string passed
+//! [`ThreadId`] and name, plus the `site` string passed
 //! to `acquire`. A contending `acquire` call reads that record before failing,
 //! so the panic/error names **both** parties — "`{new_site}` on thread {new}
 //! collided with `{holder_site}` still held by thread {holder}" — not just the
