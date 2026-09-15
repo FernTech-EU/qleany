@@ -48,6 +48,28 @@ use teksilo::widgets::{
 
 use frontend::EntityId;
 use frontend::direct_access::Create{{ demo_ent.pascal_name }}Dto;
+{#- A required, non-list entity reference cannot be left to `Default`: that is
+    id 0, which is not a real row. The first create claims it and every later one
+    trips the one-to-one constraint, so the demo's Add button works exactly once.
+    Mint the child instead, which needs the command module for each target. -#}
+{%- set_global required_children = [] %}
+{%- set_global seen_child_targets = [] %}
+{%- for f in demo_ent.fields %}
+{%- if f.inner.field_type == "Entity" and not f.is_list and not f.optional and f.inner.entity %}
+{%- set_global required_children = required_children | concat(with=f.snake_name) %}
+{%- set target = s.entities[f.inner.entity] %}
+{%- if target.snake_name not in seen_child_targets %}
+{%- set_global seen_child_targets = seen_child_targets | concat(with=target.snake_name) %}
+use frontend::commands::{{ target.snake_name }}_commands;
+use frontend::direct_access::Create{{ target.pascal_name }}Dto;
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+{%- if required_children | length > 0 %}
+use std::rc::Rc;
+
+use frontend::AppContext;
+{%- endif %}
 {%- for f in demo_ent.normal_fields %}
 {%- if f.inner.field_type == "Enum" and not f.is_list %}
 use frontend::common::entities::{{ f.inner.enum_name }};
@@ -96,8 +118,51 @@ impl FormState {
     /// relationship ids, lists, optionals -- which is what lets this compile for
     /// an arbitrary entity. The timestamps are stamped by the list model's
     /// `create`, not here.
-    fn to_create_dto(&self) -> Create{{ demo_ent.pascal_name }}Dto {
-        Create{{ demo_ent.pascal_name }}Dto {
+{%- if required_children | length > 0 %}
+    ///
+    /// Required entity references are the exception: `Default` leaves them at
+    /// id 0, which is not a real row, so each one is minted first. `None` means
+    /// a child could not be created and there is nothing valid to submit.
+{%- endif %}
+    fn to_create_dto(
+        &self,
+{%- if required_children | length > 0 %}
+        app_ctx: &Rc<AppContext>,
+        stack_id: Option<u64>,
+{%- endif %}
+    ) -> Option<Create{{ demo_ent.pascal_name }}Dto> {
+{%- if required_children | length > 0 %}
+        let now = chrono::Utc::now();
+{%- endif %}
+{%- for f in demo_ent.fields %}
+{%- if f.inner.field_type == "Entity" and not f.is_list and not f.optional and f.inner.entity %}
+{%- set target = s.entities[f.inner.entity] %}
+        // `{{ f.snake_name }}` is a required reference to a {{ target.pascal_name }}.
+        // Leaving it at `Default` (id 0) lets the first create claim a row that
+        // does not exist, and every later one fails the one-to-one constraint.
+        let {{ f.snake_name }} = match {{ target.snake_name }}_commands::create_orphan_{{ target.snake_name }}(
+            app_ctx,
+{%- if target.inner.undoable %}
+            stack_id,
+{%- endif %}
+            &Create{{ target.pascal_name }}Dto {
+                created_at: now,
+                updated_at: now,
+                ..Default::default()
+            },
+        ) {
+            Ok(dto) => dto.id,
+            Err(e) => {
+                log::error!(
+                    "Add {{ demo_ent.pascal_name }}: could not create the required \
+                     {{ target.pascal_name }}: {e:#}"
+                );
+                return None;
+            }
+        };
+{%- endif %}
+{%- endfor %}
+        Some(Create{{ demo_ent.pascal_name }}Dto {
             {%- for f in demo_ent.normal_fields %}
             {%- if not f.is_list and not f.optional and f.snake_name != "created_at" and f.snake_name != "updated_at" and f.inner.field_type != "Entity" %}
             {%- if f.inner.field_type == "Boolean" or f.inner.field_type == "Integer" or f.inner.field_type == "UInteger" or f.inner.field_type == "Float" %}
@@ -125,8 +190,13 @@ impl FormState {
             {%- endif %}
             {%- endif %}
             {%- endfor %}
+{%- for f in demo_ent.fields %}
+{%- if f.inner.field_type == "Entity" and not f.is_list and not f.optional and f.inner.entity %}
+            {{ f.snake_name }},
+{%- endif %}
+{%- endfor %}
             ..Default::default()
-        }
+        })
     }
 
     fn clear(&self) {
@@ -234,8 +304,11 @@ impl Widget for AppRoot {
         {%- elif f.inner.field_type == "DateTime" %}
         form = form.line(
             TextWidget::new(lit!("{{ f.pascal_name }}")),
+            // `to_create_dto` already falls back to `chrono::Utc::now()` for an
+            // empty or unparsable value, so the field is genuinely optional --
+            // the old RFC 3339 example read as a required format.
             TextInput::new(self.form.{{ f.snake_name }}.clone())
-                .placeholder(lit!("YYYY-MM-DDTHH:MM:SSZ")),
+                .placeholder(lit!("Auto-generated timestamp (optional)")),
         );
         {%- else %}
         form = form.line(
@@ -250,16 +323,39 @@ impl Widget for AppRoot {
         let add_button = {
             let model = self.session.{{ list_ent.snake_name }}_{{ list_field.snake_name }}.clone();
             let form_state = self.form.clone();
+{%- if required_children | length > 0 %}
+            let app_ctx = self.session.app_ctx.clone();
+{%- endif %}
             Button::new(lit!("Add {{ demo_ent.pascal_name }}"))
                 .variant(ButtonVariant::Filled)
                 .on_activate_fn(move |_| {
+{%- if required_children | length > 0 %}
+                    // Minting the required children can fail; it logs its own
+                    // reason, so there is nothing to add here.
+                    let Some(dto) = form_state.to_create_dto(&app_ctx, stack_id) else {
+                        return;
+                    };
+{%- else %}
+                    let Some(dto) = form_state.to_create_dto() else {
+                        return;
+                    };
+{%- endif %}
                     // `-1` appends: the order is the user's, and a new row
                     // joining at the top would claim to be first.
-                    if model
-                        .create(&form_state.to_create_dto(), -1, stack_id)
-                        .is_some()
-                    {
-                        form_state.clear();
+                    match model.create(&dto, -1, stack_id) {
+                        Some(_) => form_state.clear(),
+                        // Keep the form filled -- the user's typing is the only
+                        // copy of it -- but never fail silently. The model logs
+                        // a backend error itself; the case it cannot see is an
+                        // unset owner, which means `Session::bootstrap` did not
+                        // run or gave up.
+                        None => log::error!(
+                            "Add {{ demo_ent.pascal_name }}: nothing was created. Either the \
+                             backend refused it (logged just above) or \
+                             `{{ list_ent.snake_name }}_{{ list_field.snake_name }}_owner` is \
+                             still None, which means the {{ list_ent.pascal_name }} bootstrap \
+                             did not run."
+                        ),
                     }
                 })
         };
@@ -325,35 +421,61 @@ impl Widget for AppRoot {
         // ── Column 3: the detail ──────────────────────────────────────────
         {%- if demo_ent.inner.single_model %}
         let single = self.session.single_{{ demo_ent.snake_name }}.clone();
-        let mut detail = VStack::new()
+        // Every value below is *bound* to one of the single's signals. None of
+        // them is read with `.get()` here, and that is the whole point: Teksilo
+        // does not track signal reads made during `build`. A `.get()` in this
+        // function yields a value frozen at build time -- `ctx.effect` only
+        // installs an observer, it never marks the widget dirty, and there is no
+        // `request_rebuild` -- so the detail column would show the first
+        // selection for ever. Widgets update through bindings instead:
+        // `TextWidget::text` takes a `Prop<String>`, a `Signal<String>` converts
+        // into one, and the widget registers it with the binding registry so a
+        // change relayouts and repaints the label on its own.
+        // `TextWidget::new` takes a constant `LocalizedString`, so the live value
+        // arrives through `.text(..)`, which replaces it. Each row is zipped with
+        // the selection so it reads blank when nothing is selected: `clear()`
+        // resets the single to `Default`, and the Debug of a default is not
+        // nothing -- it is `1970-01-01T00:00:00Z`, `0`, `[]` and the first enum
+        // variant, which would look like a real row that happens to be empty.
+        // Non-String fields go through `{:?}`, the one formatting every generated
+        // type has: enums, Vec, Option, Uuid and DateTime all derive Debug. It
+        // runs inside the map, not here, so the row stays live instead of
+        // capturing one formatted string.
+        let mut rows = FormLayout::new().row_spacing(6.0);
+        {%- for f in demo_ent.normal_fields %}
+        rows = rows.line(
+            TextWidget::new(lit!("{{ f.pascal_name }}")).style(TextStyleRole::BodyBold),
+            TextWidget::new(lit!("")).text(self.selected_id.zip(&single.{{ f.snake_name }}()).map(
+                |(selected, value)| match selected {
+                    None => String::new(),
+                    {%- if f.inner.field_type == "String" and not f.is_list and not f.optional %}
+                    Some(_) => value.clone(),
+                    {%- else %}
+                    Some(_) => format!("{value:?}"),
+                    {%- endif %}
+                },
+            )),
+        );
+        {%- endfor %}
+
+        // The "nothing selected" state is a bound status line rather than an
+        // `if` choosing between two children. Picking a child during `build` has
+        // exactly the defect the rows above avoid: the choice is made once and
+        // no later selection can revisit it.
+        let detail_column = VStack::new()
             .spacing(8.0)
             .child(TextWidget::new(lit!("{{ demo_ent.pascal_name }} Detail")).style(TextStyleRole::BodyBold))
-            .child(Divider::horizontal());
-
-        if self.selected_id.get().is_none() {
-            detail = detail
-                .child(TextWidget::new(lit!("Select an item in the list")).color(TextRole::Secondary));
-        } else {
-            let mut rows = FormLayout::new().row_spacing(6.0);
-            {%- for f in demo_ent.normal_fields %}
-            {%- if f.inner.field_type == "String" and not f.is_list and not f.optional %}
-            rows = rows.line(
-                TextWidget::new(lit!("{{ f.pascal_name }}")).style(TextStyleRole::BodyBold),
-                TextWidget::new(lit!(single.{{ f.snake_name }}().get())),
-            );
-            {%- else %}
-            // `{:?}` is the one formatting every generated type has: enums, Vec,
-            // Option, Uuid and DateTime all derive Debug. The Rust analogue of
-            // the C++ template's `QVariant::fromValue(..).toString()`.
-            rows = rows.line(
-                TextWidget::new(lit!("{{ f.pascal_name }}")).style(TextStyleRole::BodyBold),
-                TextWidget::new(lit!(format!("{:?}", single.{{ f.snake_name }}().get()))),
-            );
-            {%- endif %}
-            {%- endfor %}
-            detail = detail.child(rows);
-        }
-        let detail_column = detail.child(Spacer::new());
+            .child(Divider::horizontal())
+            .child(
+                TextWidget::new(lit!(""))
+                    .text(self.selected_id.map(|o| match o {
+                        None => "Select an item in the list".to_string(),
+                        Some(id) => format!("Selected #{id}"),
+                    }))
+                    .color(TextRole::Secondary),
+            )
+            .child(rows)
+            .child(Spacer::new());
         {%- else %}
         // First level of graceful degradation: the demo still builds, and says
         // what to turn on.
