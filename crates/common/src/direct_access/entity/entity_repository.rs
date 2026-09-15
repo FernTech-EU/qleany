@@ -739,9 +739,9 @@ impl<'a> EntityRepository<'a> {
         let mut to_update: Vec<EntityId> = Vec::new(); // in both                    -> revert
         let mut to_delete: Vec<EntityId> = Vec::new(); // live only (created after)  -> delete
         {
-            let live = read_or_recover(&store.entitys);
+            let live = read_or_recover(&store.entities);
             for id in &ids {
-                match (snap.entitys.contains_key(id), live.contains_key(id)) {
+                match (snap.entities.contains_key(id), live.contains_key(id)) {
                     (true, false) => to_create.push(*id),
                     (true, true) => to_update.push(*id),
                     (false, true) => to_delete.push(*id),
@@ -799,9 +799,9 @@ impl<'a> EntityRepository<'a> {
 
         // 2. Entity rows: revert/re-add from snapshot, delete the ones created after it.
         {
-            let mut live = write_or_recover(&store.entitys);
+            let mut live = write_or_recover(&store.entities);
             for id in to_create.iter().chain(to_update.iter()) {
-                if let Some(row) = snap.entitys.get(id) {
+                if let Some(row) = snap.entities.get(id) {
                     live.insert(*id, row.clone());
                 }
             }

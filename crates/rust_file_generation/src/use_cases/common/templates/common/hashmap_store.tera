@@ -21,7 +21,7 @@ use std::sync::RwLock;
 pub struct HashMapStore {
     // ── Entity tables ──────────────────────────────────────────────────
 {%- for eid, ent in s.entities %}
-    pub {{ ent.snake_name }}s: RwLock<HashMap<EntityId, {{ ent.pascal_name }}>>,
+    pub {{ ent.snake_name | pluralize }}: RwLock<HashMap<EntityId, {{ ent.pascal_name }}>>,
 {%- endfor %}
 
     // ── Junction tables (one per forward relationship, shared for backward cleanup) ─
@@ -51,7 +51,7 @@ impl HashMapStore {
     pub fn snapshot(&self) -> HashMapStoreSnapshot {
         HashMapStoreSnapshot {
 {%- for eid, ent in s.entities %}
-            {{ ent.snake_name }}s: read_or_recover(&self.{{ ent.snake_name }}s).clone(),
+            {{ ent.snake_name | pluralize }}: read_or_recover(&self.{{ ent.snake_name | pluralize }}).clone(),
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
@@ -92,7 +92,7 @@ impl HashMapStore {
         // Acquire ALL read guards first (declared order), then clone under that
         // one consistent lock set.
 {%- for eid, ent in s.entities %}
-        let g_{{ ent.snake_name }}s = read_or_recover(&self.{{ ent.snake_name }}s);
+        let g_{{ ent.snake_name | pluralize }} = read_or_recover(&self.{{ ent.snake_name | pluralize }});
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
@@ -103,7 +103,7 @@ impl HashMapStore {
 
         HashMapStore {
 {%- for eid, ent in s.entities %}
-            {{ ent.snake_name }}s: RwLock::new(g_{{ ent.snake_name }}s.clone()),
+            {{ ent.snake_name | pluralize }}: RwLock::new(g_{{ ent.snake_name | pluralize }}.clone()),
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
@@ -119,7 +119,7 @@ impl HashMapStore {
     /// Restore from a savepoint snapshot.
     pub fn restore(&self, snap: &HashMapStoreSnapshot) {
 {%- for eid, ent in s.entities %}
-        *write_or_recover(&self.{{ ent.snake_name }}s) = snap.{{ ent.snake_name }}s.clone();
+        *write_or_recover(&self.{{ ent.snake_name | pluralize }}) = snap.{{ ent.snake_name | pluralize }}.clone();
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
@@ -184,7 +184,7 @@ impl HashMapStore {
     /// Used for undo snapshots where IDs must remain monotonically increasing.
     pub fn restore_without_counters(&self, snap: &HashMapStoreSnapshot) {
 {%- for eid, ent in s.entities %}
-        *write_or_recover(&self.{{ ent.snake_name }}s) = snap.{{ ent.snake_name }}s.clone();
+        *write_or_recover(&self.{{ ent.snake_name | pluralize }}) = snap.{{ ent.snake_name | pluralize }}.clone();
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}
@@ -216,7 +216,7 @@ impl HashMapStore {
 #[derive(Debug, Clone)]
 pub struct HashMapStoreSnapshot {
 {%- for eid, ent in s.entities %}
-    pub(crate) {{ ent.snake_name }}s: HashMap<EntityId, {{ ent.pascal_name }}>,
+    pub(crate) {{ ent.snake_name | pluralize }}: HashMap<EntityId, {{ ent.pascal_name }}>,
 {%- endfor %}
 {%- for eid, ent in s.entities %}
 {%- for rid, r in s.entities[eid].forward_relationships %}

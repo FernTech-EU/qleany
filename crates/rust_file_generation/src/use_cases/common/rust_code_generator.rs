@@ -266,11 +266,24 @@ fn camel_case_filter(
     Ok(tera::Value::String(camel))
 }
 
+/// Tera filter that converts an English word (possibly snake_case) to its plural form.
+/// Example: "entity" → "entities"
+fn pluralize_filter(
+    value: &tera::Value,
+    _args: &std::collections::HashMap<String, tera::Value>,
+) -> tera::Result<tera::Value> {
+    let s = value
+        .as_str()
+        .ok_or_else(|| tera::Error::msg("pluralize filter expects a string"))?;
+    Ok(tera::Value::String(naming::to_plural(s)))
+}
+
 fn get_rust_tera() -> &'static Tera {
     RUST_TERA.get_or_init(|| {
         let mut tera = Tera::default();
         load_templates_from_dir(&mut tera, &RUST_TEMPLATES_DIR);
         tera.register_filter("camelCase", camel_case_filter);
+        tera.register_filter("pluralize", pluralize_filter);
         tera
     })
 }
@@ -1723,5 +1736,108 @@ mod tests {
 
         // Basic assertion: when file has no bound entity, template emits a clear comment
         assert!(!code.contains("No entity bound to this file"));
+    }
+
+    #[test]
+    fn hashmap_store_template_pluralizes_the_entity_table_names() {
+        let entity_id: EntityId = 1;
+        let mut entities = IndexMap::new();
+        entities.insert(
+            entity_id,
+            EntityVM {
+                inner: Entity {
+                    id: entity_id,
+                    name: "Entity".into(),
+                    ..Default::default()
+                },
+                relationships: IndexMap::new(),
+                forward_relationships: IndexMap::new(),
+                backward_relationships: IndexMap::new(),
+                snake_name: "entity".into(),
+                pascal_name: "Entity".into(),
+                fields: Vec::new(),
+                normal_fields: Vec::new(),
+                owner: None,
+                owner_pascal_name: None,
+                owner_snake_name: None,
+                owner_relationship_field_pascal_name: None,
+                owner_relationship_field_snake_name: None,
+                owner_relationship_type: None,
+                ownership_chain: Vec::new(),
+            },
+        );
+
+        let snapshot = GenerationSnapshot {
+            file: FileVM {
+                inner: File {
+                    id: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    name: "hashmap_store.rs".into(),
+                    relative_path: "".into(),
+                    group: "common".into(),
+                    template_name: "hashmap_store".into(),
+                    generated_code: None,
+                    status: FileStatus::New,
+                    nature: Default::default(),
+                    feature: None,
+                    all_features: false,
+                    entity: None,
+                    all_entities: false,
+                    use_case: None,
+                    all_use_cases: false,
+                    field: None,
+                },
+            },
+            global: GlobalVM {
+                inner: Global {
+                    id: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    language: "rust".into(),
+                    application_name: "test".into(),
+                    organisation_name: "test".into(),
+                    organisation_domain: "test".into(),
+                    prefix_path: "".into(),
+                },
+                application_kebab_name: "test".into(),
+                application_snake_name: "test".into(),
+                prefix: "".into(),
+            },
+            ui: UserInterfaceVM {
+                inner: UserInterface {
+                    id: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    ..Default::default()
+                },
+            },
+            system: SystemVM {
+                inner: System {
+                    id: 1,
+                    ..Default::default()
+                },
+            },
+            entities,
+            features: IndexMap::new(),
+            use_cases: IndexMap::new(),
+            dtos: IndexMap::new(),
+        };
+
+        let tera = get_rust_tera();
+        let mut context = Context::new();
+        context.insert("s", &snapshot);
+        let code = tera
+            .render("hashmap_store", &context)
+            .expect("rendering hashmap_store");
+
+        assert!(
+            code.contains("pub entities: RwLock<HashMap<EntityId, Entity>>"),
+            "expected a pluralized store field, got:\n{code}"
+        );
+        assert!(
+            !code.contains("entitys"),
+            "naive plural leaked into the generated store:\n{code}"
+        );
     }
 }

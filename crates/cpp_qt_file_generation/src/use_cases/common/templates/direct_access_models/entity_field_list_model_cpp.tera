@@ -304,13 +304,13 @@ void {{ ent.pascal_name }}{{ field.pascal_name }}ListModel::refreshData()
 
 
     // Use QTimer::singleShot to handle async operations without coroutines in this context
-    QCoro::Task<QList<{{ target_ent.pascal_name }}::{{ target_ent.pascal_name }}Dto>> fetch{{ target_ent.pascal_name }}sTask =
+    QCoro::Task<QList<{{ target_ent.pascal_name }}::{{ target_ent.pascal_name }}Dto>> fetch{{ target_ent.pascal_plural_name }}Task =
         m_{{ ent.camel_name }}Controller->getRelationshipIds(m_{{ ent.camel_name }}Id, {{ ent.pascal_name }}RelationshipField::{{ field.pascal_name }})
             .then([this](auto &&{{ target_ent.camel_name }}Ids) -> QCoro::Task<QList<{{ target_ent.pascal_name }}::{{ target_ent.pascal_name }}Dto>> {
                 return m_{{ target_ent.camel_name }}Controller->get({{ target_ent.camel_name }}Ids);
             });
 
-    QCoro::connect(std::move(fetch{{ target_ent.pascal_name }}sTask), this, [this](auto &&result) {
+    QCoro::connect(std::move(fetch{{ target_ent.pascal_plural_name }}Task), this, [this](auto &&result) {
         if (!m_{{ ent.camel_name }}Controller || !m_{{ target_ent.camel_name }}Controller)
             return;
 
@@ -338,9 +338,9 @@ void {{ ent.pascal_name }}{{ field.pascal_name }}ListModel::on{{ target_ent.pasc
         }
     }
 
-    QCoro::Task<QList<{{ target_ent.pascal_name }}::{{ target_ent.pascal_name }}Dto>> fetch{{ target_ent.pascal_name }}sTask = m_{{ target_ent.camel_name }}Controller->get(relevantIds);
+    QCoro::Task<QList<{{ target_ent.pascal_name }}::{{ target_ent.pascal_name }}Dto>> fetch{{ target_ent.pascal_plural_name }}Task = m_{{ target_ent.camel_name }}Controller->get(relevantIds);
 
-    QCoro::connect(std::move(fetch{{ target_ent.pascal_name }}sTask), this, [this](auto &&result) {
+    QCoro::connect(std::move(fetch{{ target_ent.pascal_plural_name }}Task), this, [this](auto &&result) {
         if (!m_{{ ent.camel_name }}Controller || !m_{{ target_ent.camel_name }}Controller)
             return;
 

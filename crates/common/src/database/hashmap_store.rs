@@ -23,7 +23,7 @@ pub struct HashMapStore {
     pub roots: RwLock<HashMap<EntityId, Root>>,
     pub workspaces: RwLock<HashMap<EntityId, Workspace>>,
     pub systems: RwLock<HashMap<EntityId, System>>,
-    pub entitys: RwLock<HashMap<EntityId, Entity>>,
+    pub entities: RwLock<HashMap<EntityId, Entity>>,
     pub fields: RwLock<HashMap<EntityId, Field>>,
     pub features: RwLock<HashMap<EntityId, Feature>>,
     pub files: RwLock<HashMap<EntityId, File>>,
@@ -80,7 +80,7 @@ impl HashMapStore {
             roots: read_or_recover(&self.roots).clone(),
             workspaces: read_or_recover(&self.workspaces).clone(),
             systems: read_or_recover(&self.systems).clone(),
-            entitys: read_or_recover(&self.entitys).clone(),
+            entities: read_or_recover(&self.entities).clone(),
             fields: read_or_recover(&self.fields).clone(),
             features: read_or_recover(&self.features).clone(),
             files: read_or_recover(&self.files).clone(),
@@ -183,7 +183,7 @@ impl HashMapStore {
         let g_roots = read_or_recover(&self.roots);
         let g_workspaces = read_or_recover(&self.workspaces);
         let g_systems = read_or_recover(&self.systems);
-        let g_entitys = read_or_recover(&self.entitys);
+        let g_entities = read_or_recover(&self.entities);
         let g_fields = read_or_recover(&self.fields);
         let g_features = read_or_recover(&self.features);
         let g_files = read_or_recover(&self.files);
@@ -233,7 +233,7 @@ impl HashMapStore {
             roots: RwLock::new(g_roots.clone()),
             workspaces: RwLock::new(g_workspaces.clone()),
             systems: RwLock::new(g_systems.clone()),
-            entitys: RwLock::new(g_entitys.clone()),
+            entities: RwLock::new(g_entities.clone()),
             fields: RwLock::new(g_fields.clone()),
             features: RwLock::new(g_features.clone()),
             files: RwLock::new(g_files.clone()),
@@ -296,7 +296,7 @@ impl HashMapStore {
         *write_or_recover(&self.roots) = snap.roots.clone();
         *write_or_recover(&self.workspaces) = snap.workspaces.clone();
         *write_or_recover(&self.systems) = snap.systems.clone();
-        *write_or_recover(&self.entitys) = snap.entitys.clone();
+        *write_or_recover(&self.entities) = snap.entities.clone();
         *write_or_recover(&self.fields) = snap.fields.clone();
         *write_or_recover(&self.features) = snap.features.clone();
         *write_or_recover(&self.files) = snap.files.clone();
@@ -408,7 +408,7 @@ impl HashMapStore {
         *write_or_recover(&self.roots) = snap.roots.clone();
         *write_or_recover(&self.workspaces) = snap.workspaces.clone();
         *write_or_recover(&self.systems) = snap.systems.clone();
-        *write_or_recover(&self.entitys) = snap.entitys.clone();
+        *write_or_recover(&self.entities) = snap.entities.clone();
         *write_or_recover(&self.fields) = snap.fields.clone();
         *write_or_recover(&self.features) = snap.features.clone();
         *write_or_recover(&self.files) = snap.files.clone();
@@ -487,7 +487,7 @@ pub struct HashMapStoreSnapshot {
     pub(crate) roots: HashMap<EntityId, Root>,
     pub(crate) workspaces: HashMap<EntityId, Workspace>,
     pub(crate) systems: HashMap<EntityId, System>,
-    pub(crate) entitys: HashMap<EntityId, Entity>,
+    pub(crate) entities: HashMap<EntityId, Entity>,
     pub(crate) fields: HashMap<EntityId, Field>,
     pub(crate) features: HashMap<EntityId, Feature>,
     pub(crate) files: HashMap<EntityId, File>,

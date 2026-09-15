@@ -73,7 +73,7 @@ impl<'a> EntityTable for EntityHashMapTable<'a> {
 
     fn create_multi(&mut self, entities: &[Entity]) -> Result<Vec<Entity>, RepositoryError> {
         let mut created = Vec::with_capacity(entities.len());
-        let mut entity_map = write_or_recover(&self.store.entitys);
+        let mut entity_map = write_or_recover(&self.store.entities);
 
         for entity in entities {
             let new_entity = if entity.id == EntityId::default() {
@@ -119,7 +119,7 @@ impl<'a> EntityTable for EntityHashMapTable<'a> {
     }
 
     fn get(&self, id: &EntityId) -> Result<Option<Entity>, RepositoryError> {
-        let entity_map = read_or_recover(&self.store.entitys);
+        let entity_map = read_or_recover(&self.store.entities);
         match entity_map.get(id) {
             Some(entity) => {
                 let mut e = entity.clone();
@@ -140,7 +140,7 @@ impl<'a> EntityTable for EntityHashMapTable<'a> {
     }
 
     fn get_all(&self) -> Result<Vec<Entity>, RepositoryError> {
-        let entity_map = read_or_recover(&self.store.entitys);
+        let entity_map = read_or_recover(&self.store.entities);
         let entries: Vec<Entity> = entity_map.values().cloned().collect();
         drop(entity_map);
         let mut result = Vec::with_capacity(entries.len());
@@ -168,7 +168,7 @@ impl<'a> EntityTable for EntityHashMapTable<'a> {
 
     // Scalar-only update: writes entity data but does NOT touch junction tables.
     fn update_multi(&mut self, entities: &[Entity]) -> Result<Vec<Entity>, RepositoryError> {
-        let mut entity_map = write_or_recover(&self.store.entitys);
+        let mut entity_map = write_or_recover(&self.store.entities);
         for entity in entities {
             entity_map.insert(entity.id, entity.clone());
         }
@@ -197,7 +197,7 @@ impl<'a> EntityTable for EntityHashMapTable<'a> {
         &mut self,
         entities: &[Entity],
     ) -> Result<Vec<Entity>, RepositoryError> {
-        let mut entity_map = write_or_recover(&self.store.entitys);
+        let mut entity_map = write_or_recover(&self.store.entities);
         for entity in entities {
             entity_map.insert(entity.id, entity.clone());
 
@@ -228,7 +228,7 @@ impl<'a> EntityTable for EntityHashMapTable<'a> {
     }
 
     fn remove_multi(&mut self, ids: &[EntityId]) -> Result<(), RepositoryError> {
-        let mut entity_map = write_or_recover(&self.store.entitys);
+        let mut entity_map = write_or_recover(&self.store.entities);
         for id in ids {
             entity_map.remove(id);
 
@@ -294,7 +294,7 @@ impl<'a> EntityHashMapTableRO<'a> {
 
 impl<'a> EntityTableRO for EntityHashMapTableRO<'a> {
     fn get(&self, id: &EntityId) -> Result<Option<Entity>, RepositoryError> {
-        let entity_map = read_or_recover(&self.store.entitys);
+        let entity_map = read_or_recover(&self.store.entities);
         match entity_map.get(id) {
             Some(entity) => {
                 let mut e = entity.clone();
@@ -315,7 +315,7 @@ impl<'a> EntityTableRO for EntityHashMapTableRO<'a> {
     }
 
     fn get_all(&self) -> Result<Vec<Entity>, RepositoryError> {
-        let entity_map = read_or_recover(&self.store.entitys);
+        let entity_map = read_or_recover(&self.store.entities);
         let entries: Vec<Entity> = entity_map.values().cloned().collect();
         drop(entity_map);
         let mut result = Vec::with_capacity(entries.len());

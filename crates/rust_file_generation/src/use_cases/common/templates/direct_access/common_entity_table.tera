@@ -105,7 +105,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
 
     fn create_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
         let mut created = Vec::with_capacity(entities.len());
-        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
 
         for entity in entities {
             let new_entity = if entity.id == EntityId::default() {
@@ -165,7 +165,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn get(&self, id: &EntityId) -> Result<Option<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         match {{ s.entities[e].snake_name }}_map.get(id) {
             Some(entity) => {
                 let mut e = entity.clone();
@@ -186,7 +186,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn get_all(&self) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         let entries: Vec<{{ s.entities[e].pascal_name }}> = {{ s.entities[e].snake_name }}_map.values().cloned().collect();
         drop({{ s.entities[e].snake_name }}_map);
         let mut result = Vec::with_capacity(entries.len());
@@ -214,7 +214,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
 
     // Scalar-only update: writes entity data but does NOT touch junction tables.
     fn update_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         for entity in entities {
             {{ s.entities[e].snake_name }}_map.insert(entity.id, entity.clone());
         }
@@ -240,7 +240,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn update_with_relationships_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         for entity in entities {
             {% for f in s.entities[e].fields %}
             {%- if f.inner.field_type == "Entity" and f.relationship == "OneToOne" %}
@@ -302,7 +302,7 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn remove_multi(&mut self, ids: &[EntityId]) -> Result<(), RepositoryError> {
-        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         for id in ids {
             {{ s.entities[e].snake_name }}_map.remove(id);
 
@@ -377,7 +377,7 @@ impl<'a> {{ s.entities[e].pascal_name }}HashMapTableRO<'a> {
 
 impl<'a> {{ s.entities[e].pascal_name }}TableRO for {{ s.entities[e].pascal_name }}HashMapTableRO<'a> {
     fn get(&self, id: &EntityId) -> Result<Option<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         match {{ s.entities[e].snake_name }}_map.get(id) {
             Some(entity) => {
                 let mut e = entity.clone();
@@ -398,7 +398,7 @@ impl<'a> {{ s.entities[e].pascal_name }}TableRO for {{ s.entities[e].pascal_name
     }
 
     fn get_all(&self) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
-        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name }}s);
+        let {{ s.entities[e].snake_name }}_map = read_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         let entries: Vec<{{ s.entities[e].pascal_name }}> = {{ s.entities[e].snake_name }}_map.values().cloned().collect();
         drop({{ s.entities[e].snake_name }}_map);
         let mut result = Vec::with_capacity(entries.len());
@@ -430,7 +430,7 @@ use crate::entities::{{ s.entities[e].pascal_name }};
 crate::impl_leaf_entity_table!(
     entity: {{ s.entities[e].pascal_name }},
     entity_name: "{{ s.entities[e].snake_name }}",
-    store_field: {{ s.entities[e].snake_name }}s,
+    store_field: {{ s.entities[e].snake_name | pluralize }},
     table_trait: {{ s.entities[e].pascal_name }}Table,
     table_ro_trait: {{ s.entities[e].pascal_name }}TableRO,
     table_struct: {{ s.entities[e].pascal_name }}HashMapTable,
