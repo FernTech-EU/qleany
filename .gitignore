@@ -178,6 +178,16 @@ temp_*/
 temp_manifest.yaml
 tested_project
 
+# mdbook output, and the three chapters the docs workflow copies in from the
+# repository root before building (see .github/workflows/mdbook-gh-pages.yml).
+# They are referenced by docs/SUMMARY.md but deliberately not tracked, because
+# README.md, CONTRIBUTING.md and DCO.md are the originals. `mdbook build`
+# creates them as empty stubs if the copy step has not run.
+/book/
+/docs/introduction.md
+/docs/contributing.md
+/docs/dco.md
+
 # LLM/AI tools
 .claude/
 .cursor/

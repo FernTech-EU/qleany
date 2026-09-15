@@ -11,6 +11,7 @@
 #   ./run_tests.sh --cpp-qt         Only run the C++/Qt example (generate, build, test).
 #   ./run_tests.sh --no-cleanup      Keep build directories after the run.
 #   ./run_tests.sh --deep-clean      Also drop tests/rust/target (cold rebuild next run).
+#   ./run_tests.sh --no-lints        Skip the lint gate (fmt, clippy, rustdoc, typos).
 #   ./run_tests.sh --install-deps    Install Ubuntu packages first (Qt6, QCoro, Rust).
 #
 # Options can be combined, for example:
@@ -39,6 +40,7 @@ RUN_RUST=false
 RUN_CPPQT=false
 NO_CLEANUP=false
 DEEP_CLEAN=false
+NO_LINTS=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -70,6 +72,10 @@ while [[ $# -gt 0 ]]; do
             DEEP_CLEAN=true
             shift
             ;;
+        --no-lints)
+            NO_LINTS=true
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -80,6 +86,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --cpp-qt         Only process the C++/Qt example"
             echo "  --no-cleanup     Keep generated temp/ directories after the run"
             echo "  --deep-clean     Also remove tests/rust/target (forces a cold rebuild)"
+            echo "  --no-lints       Skip the lint gate (fmt, clippy, rustdoc, typos)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "When neither --rust nor --cpp-qt is given, both examples are processed."
@@ -160,6 +167,54 @@ echo "=== Qleany Test Suite ==="
 # -----------------------------------------------
 # 1. Root project: check, build, and test
 # -----------------------------------------------
+# The lint gate mirrors the CI jobs that generating and testing do not cover.
+# Without it these fail for the first time on push: the Documentation job broke
+# in 084cf69f and Spelling in f5dc66ec, both invisible to every local run.
+if ! $GENERATE_ONLY && ! $NO_LINTS; then
+    echo ""
+    echo "--- Lints: cargo fmt ---"
+    cargo fmt --all -- --check
+
+    echo ""
+    echo "--- Lints: cargo clippy ---"
+    # CI's clippy job is disabled (`if: false` in ci.yml), so this is the only
+    # place it runs at all.
+    cargo clippy --workspace --all-targets -- -D warnings
+
+    echo ""
+    echo "--- Lints: rustdoc ---"
+    # Mirrors the Documentation job. `--document-private-items` is what turns an
+    # unresolved intra-doc link in a generated file into an error.
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --document-private-items
+
+    echo ""
+    echo "--- Lints: typos ---"
+    if command -v typos >/dev/null 2>&1; then
+        typos --config .github/typos.toml
+    else
+        echo "⚠ typos is not installed — the Spelling CI job is NOT covered locally."
+        echo "⚠ Install: cargo install typos-cli"
+    fi
+
+    echo ""
+    echo "--- Lints: mdbook ---"
+    if command -v mdbook >/dev/null 2>&1; then
+        # docs/SUMMARY.md lists three chapters that live at the repository root;
+        # the docs workflow copies them in before building. Do the same here, or
+        # mdbook silently creates empty stubs and the book looks fine until it is
+        # deployed. Keep in step with .github/workflows/mdbook-gh-pages.yml.
+        cp README.md docs/introduction.md
+        cp CONTRIBUTING.md docs/contributing.md
+        cp DCO.md docs/dco.md
+        mdbook build >/dev/null
+        rm -f docs/introduction.md docs/contributing.md docs/dco.md
+        echo "book builds"
+    else
+        echo "⚠ mdbook is not installed — the documentation build is NOT covered locally."
+        echo "⚠ Install: cargo install mdbook"
+    fi
+fi
+
 echo ""
 echo "--- Root: cargo check ---"
 cargo check --workspace

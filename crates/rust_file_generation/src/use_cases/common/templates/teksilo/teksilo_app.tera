@@ -112,7 +112,7 @@ impl FormState {
                 _ => Default::default(),
             },
             {%- elif f.inner.field_type == "Uuid" %}
-            // An empty or unparseable field mints a fresh id rather than
+            // An empty or unparsable field mints a fresh id rather than
             // failing the whole create.
             {{ f.snake_name }}: uuid::Uuid::parse_str(&self.{{ f.snake_name }}.get())
                 .unwrap_or_else(|_| uuid::Uuid::new_v4()),

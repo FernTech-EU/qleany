@@ -1,0 +1,81 @@
+# Builds the mdBook documentation on every change to it.
+#
+# The deploy workflow (mdbook-gh-pages.yml) only runs on a version tag, so a
+# broken docs/SUMMARY.md — a chapter renamed, moved or removed — used to surface
+# for the first time during a release deploy. This job catches it on the pull
+# request instead.
+#
+# CI's own triggers exclude docs/** and *.md, which is why this is a separate
+# workflow rather than another job in ci.yml.
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "book.toml"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "DCO.md"
+      - ".github/workflows/docs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "book.toml"
+      - "README.md"
+      - "CONTRIBUTING.md"
+      - "DCO.md"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install mdBook
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Keep in step with the identical step in mdbook-gh-pages.yml. These three
+      # chapters are listed in docs/SUMMARY.md but live at the repository root,
+      # so they are deliberately not tracked under docs/.
+      - name: Copy root-level docs into mdBook source
+        run: |
+          cp README.md docs/introduction.md
+          sed -i 's|(docs/|(|g' docs/introduction.md
+          cp CONTRIBUTING.md docs/contributing.md
+          cp DCO.md docs/dco.md
+
+      # mdbook invents any chapter SUMMARY.md lists but the source tree lacks,
+      # writing a stub that contains only the chapter title. The build then
+      # "succeeds" with a blank page. Checking the sources beforehand is exact;
+      # inspecting the built output is not, because a stub is not empty.
+      - name: Check every chapter in SUMMARY.md exists
+        run: |
+          status=0
+          while read -r md; do
+            if [ ! -f "docs/$md" ]; then
+              echo "::error file=docs/SUMMARY.md::docs/$md is listed in SUMMARY.md but does not exist; mdbook would stub it into a blank page"
+              status=1
+            fi
+          done < <(grep -oE '\]\([^)#:]+\.md\)' docs/SUMMARY.md | sed -E 's/^\]\(//; s/\)$//')
+          exit $status
+
+      - name: Build documentation
+        run: mdbook build

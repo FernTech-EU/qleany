@@ -9,3 +9,11 @@ INVOKABLE = "INVOKABLE"
 
 # Rust variable name
 criticals = "criticals"
+
+# Identifiers the pluralization fix renamed. The migration guide and the
+# pluralizer's own tests have to show the OLD, wrong spelling verbatim to
+# document what moved, so typos must not "correct" them back.
+entitys = "entitys"
+settingss = "settingss"
+Childs = "Childs"
+Serieses = "Serieses"

@@ -1614,13 +1614,13 @@ mod tests {
     #[test]
     fn groups_are_sorted_by_collection_name() {
         let collisions = collection_name_collisions(&[
-            ("Serie", false),
             ("Base", false),
-            ("Series", false),
+            ("Axe", false),
             ("Basis", false),
+            ("Axis", false),
         ]);
         let collections: Vec<&str> = collisions.iter().map(|(c, _)| c.as_str()).collect();
-        assert_eq!(collections, vec!["bases", "series"]);
+        assert_eq!(collections, vec!["axes", "bases"]);
     }
 
     #[test]
