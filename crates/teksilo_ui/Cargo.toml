@@ -50,5 +50,10 @@ uuid = { workspace = true }
 log = "0.4"
 env_logger = "0.11"
 
+# The settings schema in `settings_keys.rs` carries a default and a validator per
+# key as `toml::Value`, which is what lets `--config` reject an unknown or
+# out-of-range key by name instead of ignoring it in silence.
+toml = "1.1"
+
 [lints]
 workspace = true
