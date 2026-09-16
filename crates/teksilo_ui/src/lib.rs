@@ -25,8 +25,10 @@ pub mod undo_redo;
 // Hand-written.
 pub mod app;
 pub mod app_ids;
+pub mod home;
 pub mod icons;
 pub mod intents;
+pub mod manifest;
 pub mod settings_keys;
 pub mod shell;
 pub mod style;
@@ -35,6 +37,7 @@ use std::rc::Rc;
 
 use teksilo::prelude::*;
 
+use frontend::commands::handling_app_lifecycle_commands;
 use frontend::{AppContext, EventHubClient};
 
 use crate::event_source::QleanyEventSource;
@@ -60,6 +63,14 @@ pub fn run() {
     env_logger::init();
 
     let app_ctx = Rc::new(AppContext::new());
+
+    // Seed Root and System before anything reads them. Every manifest operation
+    // resolves through Root, so without this a load fails on an empty store and the
+    // app simply never opens anything.
+    if let Err(e) = handling_app_lifecycle_commands::initialize_app(&app_ctx) {
+        log::error!("could not initialize the application: {e:?}");
+        return;
+    }
 
     // Background dispatch thread. It exits when `AppContext::shutdown` drops the
     // shutdown sender.

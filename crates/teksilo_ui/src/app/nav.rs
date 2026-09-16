@@ -106,8 +106,22 @@ pub fn row_enabled(screen: Screen, manifest_open: bool, check_critical: bool) ->
 
 impl Widget for NavRail {
     fn build(&mut self, ctx: &mut BuildContext) -> Vec<WidgetId> {
+        // All three at `Rebuild`, not just the screen. A row's `enabled` prop is
+        // reactive for painting, but the accessible node it publishes is written
+        // when the row is built, so a rail that only rebuilt on a screen change
+        // would keep telling assistive technology, and every automation probe, that
+        // a row is still disabled after the manifest opened.
+        //
+        // Bound on the source signals, not on a derived one built inline: a
+        // `.map(..)` temporary is dropped at the end of the statement, so the
+        // binding would be registered against something that no longer exists and
+        // the rail would never rebuild at all.
         self.ids
             .screen
+            .bind_to(ctx.self_id(), ctx.binding_registry(), BindingLevel::Rebuild);
+        self.manifest_open
+            .bind_to(ctx.self_id(), ctx.binding_registry(), BindingLevel::Rebuild);
+        self.check_critical
             .bind_to(ctx.self_id(), ctx.binding_registry(), BindingLevel::Rebuild);
         let current = self.ids.screen.get();
 

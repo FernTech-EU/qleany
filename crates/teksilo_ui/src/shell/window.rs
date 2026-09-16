@@ -11,6 +11,7 @@ use teksilo::widgets::{
 
 use crate::app::App;
 use crate::app_ids::AppIds;
+use crate::manifest::ManifestViewModel;
 use crate::session::Session;
 use crate::shell::TITLE_BAR_HEIGHT;
 use crate::shell::menus::{self, MenuParts};
@@ -25,9 +26,12 @@ use crate::shell::theme_button::ThemeButton;
 /// would draw a second bar under the real one, so the `None` arm puts the same
 /// controls in an ordinary strip and lets the OS draw the frame.
 pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> WidgetId {
+    let manifest = ManifestViewModel::new(session.app_ctx.clone(), ids.clone());
     let parts = MenuParts {
-        manifest_open: Signal::new(false),
-        can_save: Signal::new(false),
+        manifest_open: manifest.is_open(),
+        can_save: manifest.can_save(),
+        // Undo and redo follow the active screen's stack; the shell only needs to
+        // know whether the rows are live, which `App` mirrors in as it wires them.
         can_undo: Signal::new(false),
         can_redo: Signal::new(false),
         dark: Signal::new(false),
@@ -41,10 +45,13 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
         .collapse_policy(CollapsePolicy::Always)
         .hamburger_size(IconButtonSize::Toolbar);
 
-    let save = SaveButton::new(parts.can_save.clone(), parts.can_save.clone());
+    let save = SaveButton::new(
+        manifest.is_saved().map(|saved| !*saved),
+        parts.can_save.clone(),
+    );
     let theme = ThemeButton::new(parts.dark.clone());
 
-    let body = App::new(session, ids, parts.clone());
+    let body = App::new(session, ids, parts.clone(), manifest.clone());
 
     match tree.title_bar_host() {
         Some(host) => {
@@ -73,7 +80,9 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
                 Expand::horizontal {
                     Center {
                         DeadZone {
-                            TextWidget::new(tr!(app_name()))
+                            TextWidget::new(tr!(app_name())) {
+                                text: manifest.title().map(|t| t.resolve_now())
+                            }
                         }
                     }
                 }

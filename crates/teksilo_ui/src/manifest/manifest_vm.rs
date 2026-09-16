@@ -1,0 +1,425 @@
+//! The manifest's lifecycle, and the dirty flag every other screen reads.
+//!
+//! This is the one view-model the shell depends on: the window title, the Save
+//! button, the navigation rail and every File menu row read its signals.
+
+use std::cell::Cell;
+use std::rc::Rc;
+
+use teksilo::platform::file_dialog::{FileDialogRequest, FileDialogResult};
+use teksilo::prelude::*;
+
+use frontend::AppContext;
+use frontend::commands::handling_manifest_commands;
+use frontend::common::event::{DirectAccessEntity, EntityEvent, Event, Origin};
+use frontend::handling_manifest::dtos::{LoadDto, SaveDto};
+
+use crate::app_ids::AppIds;
+
+/// Every entity whose creation, update or removal means the manifest on disk is
+/// now out of date.
+///
+/// `Created` is in the list on purpose. Without it, adding an entity leaves the
+/// manifest reading clean, the Save button disabled, and the user one window-close
+/// away from losing the entity they just made.
+const DIRTYING_ENTITIES: &[DirectAccessEntity] = &[
+    DirectAccessEntity::Workspace(EntityEvent::Updated),
+    DirectAccessEntity::Entity(EntityEvent::Created),
+    DirectAccessEntity::Entity(EntityEvent::Updated),
+    DirectAccessEntity::Entity(EntityEvent::Removed),
+    DirectAccessEntity::Field(EntityEvent::Created),
+    DirectAccessEntity::Field(EntityEvent::Updated),
+    DirectAccessEntity::Field(EntityEvent::Removed),
+    DirectAccessEntity::Feature(EntityEvent::Created),
+    DirectAccessEntity::Feature(EntityEvent::Updated),
+    DirectAccessEntity::Feature(EntityEvent::Removed),
+    DirectAccessEntity::UseCase(EntityEvent::Created),
+    DirectAccessEntity::UseCase(EntityEvent::Updated),
+    DirectAccessEntity::UseCase(EntityEvent::Removed),
+    DirectAccessEntity::Dto(EntityEvent::Created),
+    DirectAccessEntity::Dto(EntityEvent::Updated),
+    DirectAccessEntity::Dto(EntityEvent::Removed),
+    DirectAccessEntity::DtoField(EntityEvent::Created),
+    DirectAccessEntity::DtoField(EntityEvent::Updated),
+    DirectAccessEntity::DtoField(EntityEvent::Removed),
+    DirectAccessEntity::Global(EntityEvent::Updated),
+    DirectAccessEntity::UserInterface(EntityEvent::Updated),
+    DirectAccessEntity::Relationship(EntityEvent::Created),
+    DirectAccessEntity::Relationship(EntityEvent::Updated),
+    DirectAccessEntity::Relationship(EntityEvent::Removed),
+];
+
+#[derive(Clone)]
+pub struct ManifestViewModel {
+    app_ctx: Rc<AppContext>,
+    ids: AppIds,
+    is_open: Signal<bool>,
+    is_saved: Signal<bool>,
+    path: Signal<String>,
+    busy: Signal<bool>,
+    error: Signal<Option<LocalizedString>>,
+    success: Signal<Option<LocalizedString>>,
+    /// A dirtying event arrived since the last frame.
+    saw_edit: Rc<Cell<bool>>,
+    /// A load or a close is draining its event burst; the manifest is clean once
+    /// the burst goes quiet. See `wire` for why this cannot simply be a flag set
+    /// before the command and cleared after it.
+    settling_clean: Rc<Cell<bool>>,
+}
+
+impl std::fmt::Debug for ManifestViewModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ManifestViewModel")
+            .field("open", &self.is_open.get())
+            .field("saved", &self.is_saved.get())
+            .finish_non_exhaustive()
+    }
+}
+
+impl ManifestViewModel {
+    pub fn new(app_ctx: Rc<AppContext>, ids: AppIds) -> Self {
+        Self {
+            app_ctx,
+            ids,
+            is_open: Signal::new(false),
+            is_saved: Signal::new(true),
+            path: Signal::new(String::new()),
+            busy: Signal::new(false),
+            error: Signal::new(None),
+            success: Signal::new(None),
+            saw_edit: Rc::new(Cell::new(false)),
+            settling_clean: Rc::new(Cell::new(false)),
+        }
+    }
+
+    // ── state a view binds ───────────────────────────────────────────────────
+
+    pub fn is_open(&self) -> Signal<bool> {
+        self.is_open.clone()
+    }
+
+    pub fn is_saved(&self) -> Signal<bool> {
+        self.is_saved.clone()
+    }
+
+    pub fn busy(&self) -> Signal<bool> {
+        self.busy.clone()
+    }
+
+    pub fn path(&self) -> Signal<String> {
+        self.path.clone()
+    }
+
+    pub fn error(&self) -> Signal<Option<LocalizedString>> {
+        self.error.clone()
+    }
+
+    pub fn success(&self) -> Signal<Option<LocalizedString>> {
+        self.success.clone()
+    }
+
+    /// There is something to write, and nothing in the way of writing it.
+    pub fn can_save(&self) -> Signal<bool> {
+        self.is_open
+            .zip(&self.is_saved)
+            .zip(&self.busy)
+            .map(|((open, saved), busy)| *open && !*saved && !*busy)
+    }
+
+    /// The window title, for the three states the Slint UI also distinguished.
+    pub fn title(&self) -> Signal<LocalizedString> {
+        self.is_open.zip(&self.path).map(|(open, path)| {
+            if !*open {
+                tr!(window_title_no_manifest())
+            } else if path.is_empty() {
+                tr!(window_title_unsaved())
+            } else {
+                tr!(window_title_with_path(path = path.clone()))
+            }
+        })
+    }
+
+    // ── commands ─────────────────────────────────────────────────────────────
+
+    /// Load a manifest from a path. Any open manifest is closed first.
+    pub fn open_path(&self, path: &str) {
+        if self.is_open.get() {
+            self.close();
+        }
+        self.busy.set(true);
+        let result = handling_manifest_commands::load(
+            &self.app_ctx,
+            &LoadDto {
+                manifest_path: path.to_string(),
+            },
+        );
+        self.busy.set(false);
+        match result {
+            Ok(dto) => {
+                self.adopt(dto.workspace_id, &dto.manifest_path);
+                self.error.set(None);
+            }
+            Err(e) => self.fail(&e.to_string()),
+        }
+    }
+
+    /// Write the manifest back to the path it came from.
+    pub fn save(&self) {
+        let path = self.path.get();
+        if path.is_empty() {
+            // Nothing to write over. The caller is expected to run the Save-as flow
+            // instead; saying so is better than writing somewhere arbitrary.
+            self.fail("this manifest has no path yet; use Save as");
+            return;
+        }
+        self.save_to(&path);
+    }
+
+    /// Write the manifest to a chosen path, which becomes its path.
+    pub fn save_to(&self, path: &str) {
+        self.busy.set(true);
+        let result = handling_manifest_commands::save(
+            &self.app_ctx,
+            &SaveDto {
+                manifest_path: path.to_string(),
+            },
+        );
+        self.busy.set(false);
+        match result {
+            Ok(()) => {
+                self.path.set(path.to_string());
+                self.is_saved.set(true);
+                self.success.set(Some(tr!(status_manifest_saved())));
+                self.error.set(None);
+            }
+            Err(e) => self.fail(&e.to_string()),
+        }
+    }
+
+    /// Forget the open manifest.
+    pub fn close(&self) {
+        if let Err(e) = handling_manifest_commands::close(&self.app_ctx) {
+            self.fail(&e.to_string());
+            return;
+        }
+        self.ids.clear();
+        self.is_open.set(false);
+        self.path.set(String::new());
+        self.error.set(None);
+        // A close empties the store, which publishes a removal per row. Same burst,
+        // same settle as a load.
+        self.begin_settling_clean();
+    }
+
+    /// Native picker for an existing manifest, then load it.
+    pub fn pick_open(&self, ctx: &mut EventContext) {
+        let me = self.clone();
+        let req = FileDialogRequest::pick_file()
+            .title("Open a Qleany manifest")
+            .add_filter("Qleany manifest", &["yaml", "yml"])
+            .default_file_name("qleany.yaml");
+        let _ = ctx.pick_file(req, move |res, _ectx| {
+            if let FileDialogResult::File(Some(path)) = res {
+                me.open_path(&path.to_string_lossy());
+            }
+        });
+    }
+
+    /// Native picker for a destination, then write there.
+    pub fn pick_save_as(&self, ctx: &mut EventContext) {
+        let me = self.clone();
+        let req = FileDialogRequest::save_file()
+            .title("Save the manifest as")
+            .add_filter("Qleany manifest", &["yaml", "yml"])
+            .default_file_name("qleany.yaml");
+        let _ = ctx.pick_file(req, move |res, _ectx| {
+            if let FileDialogResult::File(Some(path)) = res {
+                me.save_to(&path.to_string_lossy());
+            }
+        });
+    }
+
+    /// Install the subscriptions. Called from `App::build`, on **every** build: a
+    /// `BuildContext` subscription lives exactly one build cycle, so a guard here
+    /// would leave the dirty flag deaf after the first rebuild.
+    pub fn wire(&self, ctx: &mut BuildContext) {
+        // `wake_at` rather than `frame_tick` alone: teksilo pumps a frame only when
+        // something asks for one, so an effect hung on the tick alone might not run
+        // until something unrelated woke the window.
+        let wake = ctx.wake_at_handle();
+
+        for entity in DIRTYING_ENTITIES {
+            let saw_edit = self.saw_edit.clone();
+            let wake = wake.clone();
+            ctx.subscribe_event(Origin::DirectAccess(entity.clone()), move |_e: &Event| {
+                saw_edit.set(true);
+                wake.set(Some(std::time::Instant::now()));
+            });
+        }
+
+        let tick = ctx.frame_tick();
+        let me = self.clone();
+        ctx.effect(&tick, move |_| me.settle_dirty());
+    }
+
+    /// One frame's worth of the dirty state machine.
+    ///
+    /// Split out from the effect so it can be driven directly in a test: the
+    /// interesting property is the ordering, and no test can make real events
+    /// arrive in a chosen order.
+    pub(crate) fn settle_dirty(&self) {
+        if self.saw_edit.replace(false) {
+            if self.settling_clean.get() {
+                // Still draining a load or a close. Stay clean, keep waiting.
+                return;
+            }
+            self.is_saved.set_if_changed(false);
+        } else if self.settling_clean.replace(false) {
+            // A frame with no edit: the burst has drained.
+            self.is_saved.set_if_changed(true);
+        }
+    }
+
+    // ── internals ────────────────────────────────────────────────────────────
+
+    /// Take the open manifest's identity from the event that announced it.
+    ///
+    /// The workspace id and the path both ride on the event rather than being read
+    /// back from the command's return value, so a `Create` and a `Load` are handled
+    /// by one function and neither can disagree with the other.
+    fn adopt(&self, workspace_id: u64, path: &str) {
+        self.ids.workspace_id.set(Some(workspace_id));
+        self.path.set(path.to_string());
+        self.is_open.set(true);
+        self.begin_settling_clean();
+    }
+
+    /// A load or a close writes the whole store, and every one of those writes
+    /// publishes an event this view-model would otherwise read as a user edit.
+    ///
+    /// The events are buffered by the unit of work and flushed together when the
+    /// transaction commits, so they arrive *after* the command returns. Setting
+    /// `is_saved = true` here and walking away would therefore be overwritten by
+    /// the burst that follows. Instead the flag settles: `wire`'s frame effect
+    /// declares the manifest clean only after a frame passes with no dirtying
+    /// event, which is robust however many frames the burst spans.
+    fn begin_settling_clean(&self) {
+        self.settling_clean.set(true);
+        self.saw_edit.set(false);
+        self.is_saved.set(true);
+    }
+
+    /// Surface a backend failure.
+    ///
+    /// The message itself comes from `anyhow` and is not translated; the frame
+    /// around it is, which is the honest split: inventing Fluent keys for every
+    /// backend error string would be a catalogue that drifts from the backend.
+    fn fail(&self, message: &str) {
+        self.error
+            .set(Some(tr!(status_error(message = message.to_string()))));
+        self.success.set(None);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use frontend::commands::handling_app_lifecycle_commands;
+
+    fn vm() -> ManifestViewModel {
+        let ctx = Rc::new(AppContext::new());
+        handling_app_lifecycle_commands::initialize_app(&ctx).expect("initialize_app");
+        ManifestViewModel::new(ctx, AppIds::new())
+    }
+
+    /// The case that sent the first attempt at this back to the drawing board: a
+    /// load publishes one event per entity it read, all of them after the command
+    /// returned, and a flag simply set to `true` before them is overwritten.
+    #[test]
+    fn a_load_stays_clean_through_the_burst_it_causes() {
+        let vm = vm();
+        vm.begin_settling_clean();
+        assert!(vm.is_saved().get());
+
+        // Three frames of burst.
+        for _ in 0..3 {
+            vm.saw_edit.set(true);
+            vm.settle_dirty();
+            assert!(
+                vm.is_saved().get(),
+                "an event from the load itself must not mark the manifest dirty"
+            );
+        }
+
+        // A quiet frame ends it.
+        vm.settle_dirty();
+        assert!(vm.is_saved().get());
+        assert!(!vm.settling_clean.get(), "the settle should be over");
+    }
+
+    /// Once the burst has drained, a real edit dirties as usual.
+    #[test]
+    fn an_edit_after_the_burst_marks_the_manifest_dirty() {
+        let vm = vm();
+        vm.begin_settling_clean();
+        vm.settle_dirty(); // quiet frame ends the settle
+
+        vm.saw_edit.set(true);
+        vm.settle_dirty();
+        assert!(!vm.is_saved().get());
+    }
+
+    /// A plain edit with no load in flight dirties on the very next frame.
+    #[test]
+    fn an_edit_with_no_load_in_flight_dirties_at_once() {
+        let vm = vm();
+        assert!(vm.is_saved().get());
+        vm.saw_edit.set(true);
+        vm.settle_dirty();
+        assert!(!vm.is_saved().get());
+    }
+
+    /// A frame with nothing in it changes nothing.
+    #[test]
+    fn a_quiet_frame_with_no_settle_pending_is_inert() {
+        let vm = vm();
+        vm.saw_edit.set(true);
+        vm.settle_dirty();
+        assert!(!vm.is_saved().get());
+        vm.settle_dirty();
+        assert!(
+            !vm.is_saved().get(),
+            "a quiet frame must not clean a real edit"
+        );
+    }
+
+    #[test]
+    fn can_save_needs_open_dirty_and_idle() {
+        let vm = vm();
+        let can_save = vm.can_save();
+        assert!(!can_save.get(), "nothing is open");
+
+        vm.is_open.set(true);
+        vm.is_saved.set(false);
+        assert!(can_save.get());
+
+        vm.busy.set(true);
+        assert!(!can_save.get(), "a command is already running");
+    }
+
+    #[test]
+    fn the_title_distinguishes_the_three_states() {
+        let vm = vm();
+        let title = vm.title();
+        assert_eq!(title.get().resolve_now(), "Qleany");
+
+        vm.is_open.set(true);
+        assert_eq!(
+            title.get().resolve_now(),
+            "Qleany - new manifest without path"
+        );
+
+        vm.path.set("/tmp/qleany.yaml".to_string());
+        assert_eq!(title.get().resolve_now(), "Qleany - /tmp/qleany.yaml");
+    }
+}

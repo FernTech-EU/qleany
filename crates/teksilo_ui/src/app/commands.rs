@@ -11,6 +11,7 @@ use teksilo::prelude::*;
 
 use crate::app_ids::{AppIds, Screen};
 use crate::intents::name;
+use crate::manifest::ManifestViewModel;
 use crate::shell::menus::MenuParts;
 
 /// The handles the actions need. Threaded in rather than looked up, because
@@ -18,6 +19,7 @@ use crate::shell::menus::MenuParts;
 pub struct CommandDeps {
     pub ids: AppIds,
     pub parts: MenuParts,
+    pub manifest: ManifestViewModel,
 }
 
 /// Register everything. Called from `App::build`, on every build: an action
@@ -25,6 +27,61 @@ pub struct CommandDeps {
 pub fn register(ctx: &mut BuildContext, deps: &CommandDeps) {
     register_navigation(ctx, deps);
     register_theme(ctx, deps);
+    register_manifest(ctx, deps);
+}
+
+/// Open, save, save as, close, and the developer shortcut to Qleany's own manifest.
+fn register_manifest(ctx: &mut BuildContext, deps: &CommandDeps) {
+    let open = deps.parts.manifest_open.clone();
+    let can_save = deps.parts.can_save.clone();
+
+    let vm = deps.manifest.clone();
+    ctx.register_action_global(
+        Action::new(name::OPEN_MANIFEST).on_invoke(move |_i, c| vm.pick_open(c)),
+    );
+
+    let vm = deps.manifest.clone();
+    ctx.register_action_global(
+        Action::new(name::SAVE_MANIFEST)
+            .enabled_when(can_save.clone())
+            .on_invoke(move |_i, _c| vm.save()),
+    );
+
+    let vm = deps.manifest.clone();
+    ctx.register_action_global(
+        Action::new(name::SAVE_MANIFEST_AS)
+            .enabled_when(open.clone())
+            .on_invoke(move |_i, c| vm.pick_save_as(c)),
+    );
+
+    let vm = deps.manifest.clone();
+    ctx.register_action_global(
+        Action::new(name::CLOSE_MANIFEST)
+            .enabled_when(open.clone())
+            .on_invoke(move |_i, _c| vm.close()),
+    );
+
+    // The developer affordance loads the manifest in the working directory, which
+    // for anyone running from a Qleany checkout is Qleany's own.
+    let vm = deps.manifest.clone();
+    ctx.register_action_global(
+        Action::new(name::OPEN_QLEANY_MANIFEST)
+            .on_invoke(move |_i, _c| vm.open_path("qleany.yaml")),
+    );
+
+    ctx.register_shortcut_global(
+        Shortcut::new(name::OPEN_MANIFEST)
+            .intent(name::OPEN_MANIFEST)
+            .primary(KeyStroke::ctrl(Key::Character('o')))
+            .build(),
+    );
+    ctx.register_shortcut_global(
+        Shortcut::new(name::SAVE_MANIFEST)
+            .intent(name::SAVE_MANIFEST)
+            .primary(KeyStroke::ctrl(Key::Character('s')))
+            .enabled_when(can_save)
+            .build(),
+    );
 }
 
 /// The six screen intents, plus Ctrl+1 to Ctrl+6.

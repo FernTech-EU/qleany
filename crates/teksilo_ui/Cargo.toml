@@ -55,5 +55,10 @@ env_logger = "0.11"
 # out-of-range key by name instead of ignoring it in silence.
 toml = "1.1"
 
+# Hand a documentation URL to the OS default handler. `that_detached` rather than
+# `that`: the latter waits on the browser it spawned, which on a cold Firefox start
+# would freeze the UI thread for seconds.
+open = "5.3"
+
 [lints]
 workspace = true

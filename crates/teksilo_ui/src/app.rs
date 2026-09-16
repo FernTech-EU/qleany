@@ -10,6 +10,8 @@ use crate::app::commands::CommandDeps;
 use crate::app::nav::NavRail;
 
 use crate::app_ids::AppIds;
+use crate::home::{self, HomeViewModel};
+use crate::manifest::ManifestViewModel;
 use crate::session::Session;
 use crate::shell::menus::MenuParts;
 
@@ -17,15 +19,22 @@ pub struct App {
     session: Session,
     ids: AppIds,
     parts: MenuParts,
+    manifest: ManifestViewModel,
     root_child: Option<WidgetId>,
 }
 
 impl App {
-    pub fn new(session: Session, ids: AppIds, parts: MenuParts) -> Self {
+    pub fn new(
+        session: Session,
+        ids: AppIds,
+        parts: MenuParts,
+        manifest: ManifestViewModel,
+    ) -> Self {
         Self {
             session,
             ids,
             parts,
+            manifest,
             root_child: None,
         }
     }
@@ -43,11 +52,13 @@ impl Widget for App {
         // subscription lives exactly one build cycle, so a guard here would leave
         // the whole app deaf after its first rebuild.
         self.session.wire_all(ctx);
+        self.manifest.wire(ctx);
         commands::register(
             ctx,
             &CommandDeps {
                 ids: self.ids.clone(),
                 parts: self.parts.clone(),
+                manifest: self.manifest.clone(),
             },
         );
 
@@ -61,7 +72,10 @@ impl Widget for App {
         );
 
         let pages = Switcher::new(selected)
-            .child(TextWidget::new(tr!(nav_home())))
+            .child(home::page::page(
+                HomeViewModel::new(),
+                self.manifest.clone(),
+            ))
             .child(TextWidget::new(tr!(nav_project())))
             .child(TextWidget::new(tr!(nav_entities())))
             .child(TextWidget::new(tr!(nav_features())))

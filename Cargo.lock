@@ -6210,6 +6210,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "log",
+ "open",
  "qleany-frontend",
  "teksilo",
  "toml 1.1.6+spec-1.1.0",

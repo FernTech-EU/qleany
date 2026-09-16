@@ -194,3 +194,42 @@ fn removing_a_row_drops_it_from_the_list() {
     let names: Vec<String> = model.rows().into_iter().map(|r| r.name).collect();
     assert_eq!(names, vec!["Beta"]);
 }
+
+/// The close command really does clear the store.
+///
+/// Driven here rather than through the UI because a probe can only see whether a
+/// button looks disabled, which cannot distinguish "close did nothing" from "close
+/// worked and the view did not follow".
+#[test]
+fn close_clears_the_workspace() {
+    use frontend::commands::handling_manifest_commands;
+    use frontend::handling_manifest::dtos::LoadDto;
+
+    let ctx = booted();
+    let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/../../qleany.yaml");
+
+    let loaded = handling_manifest_commands::load(
+        &ctx,
+        &LoadDto {
+            manifest_path: manifest.to_string(),
+        },
+    )
+    .expect("load Qleany's own manifest");
+    assert!(loaded.workspace_id > 0);
+
+    let entities = entity_commands::get_all_entity(&ctx).expect("get_all");
+    assert!(
+        entities.len() > 5,
+        "loading the manifest should populate entities, got {}",
+        entities.len()
+    );
+
+    handling_manifest_commands::close(&ctx).expect("close");
+
+    let after = entity_commands::get_all_entity(&ctx).expect("get_all");
+    assert!(
+        after.is_empty(),
+        "close should empty the store, {} entities remain",
+        after.len()
+    );
+}
