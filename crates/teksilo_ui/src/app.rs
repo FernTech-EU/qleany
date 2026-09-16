@@ -16,6 +16,7 @@ use crate::manifest::ManifestViewModel;
 use crate::project::{ProjectPage, ProjectViewModel};
 use crate::session::Session;
 use crate::shell::menus::MenuParts;
+use crate::user_interface::{UserInterfacePage, UserInterfaceViewModel};
 
 pub struct App {
     session: Session,
@@ -30,6 +31,7 @@ pub struct App {
     project: ProjectViewModel,
     entities: EntitiesViewModel,
     fields: FieldViewModel,
+    user_interface: UserInterfaceViewModel,
     root_child: Option<WidgetId>,
 }
 
@@ -57,6 +59,13 @@ impl App {
             session.single_field.clone(),
             entities.selected(),
         );
+        // The language lives on the Project screen; the targets on offer here follow
+        // it, so the signal is shared rather than mirrored.
+        let user_interface = UserInterfaceViewModel::new(
+            session.single_user_interface.clone(),
+            ids.clone(),
+            project.language(),
+        );
         Self {
             session,
             ids,
@@ -66,6 +75,7 @@ impl App {
             project,
             entities,
             fields,
+            user_interface,
             root_child: None,
         }
     }
@@ -111,7 +121,7 @@ impl Widget for App {
                 self.fields.clone(),
             ))
             .child(TextWidget::new(tr!(nav_features())))
-            .child(TextWidget::new(tr!(nav_user_interface())))
+            .child(UserInterfacePage::new(self.user_interface.clone()))
             .child(TextWidget::new(tr!(nav_generate())));
 
         let id = ctx.add(teksu!(

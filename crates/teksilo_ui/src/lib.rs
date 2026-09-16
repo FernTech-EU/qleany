@@ -36,6 +36,7 @@ pub mod settings_keys;
 pub mod shared;
 pub mod shell;
 pub mod style;
+pub mod user_interface;
 
 use std::rc::Rc;
 

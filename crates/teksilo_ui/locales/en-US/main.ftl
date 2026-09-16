@@ -192,6 +192,19 @@ fields-enum-name-required = Enum name is required
 fields-enum-name-pascal-case = Enum name must be in PascalCase
 fields-enum-values = Enum values, one per line in PascalCase
 
+## User interface targets
+
+ui-title = User interface
+ui-section-rust = Rust user interfaces
+ui-section-cpp-qt = C++ / Qt user interfaces
+ui-target-rust-cli = CLI
+ui-target-rust-teksilo = Teksilo (recommended)
+ui-target-rust-slint = Slint
+ui-target-rust-ios = iOS (UniFFI)
+ui-target-rust-android = Android (UniFFI)
+ui-target-cpp-qt-widgets = Qt Widgets
+ui-target-cpp-qt-quick = Qt Quick
+
 ## Shared
 
 common-cancel = Cancel
