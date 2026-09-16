@@ -10,6 +10,7 @@ use crate::app::commands::CommandDeps;
 use crate::app::nav::NavRail;
 
 use crate::app_ids::AppIds;
+use crate::check::CheckViewModel;
 use crate::entities::{EntitiesPage, EntitiesViewModel, FieldViewModel};
 use crate::features::{DtoSide, DtoViewModel, FeaturesPage, FeaturesViewModel, UseCaseViewModel};
 use crate::home::{self, HomeViewModel};
@@ -24,6 +25,7 @@ pub struct App {
     ids: AppIds,
     parts: MenuParts,
     manifest: ManifestViewModel,
+    check: CheckViewModel,
     // The screens' view-models are built once and kept, never built inside `build`.
     // A rebuild would otherwise hand each screen a fresh set of signals, and
     // anything held in one, a selection, a pending edit, a bridged combo value,
@@ -46,6 +48,7 @@ impl App {
         ids: AppIds,
         parts: MenuParts,
         manifest: ManifestViewModel,
+        check: CheckViewModel,
     ) -> Self {
         let project = ProjectViewModel::new(session.single_global.clone(), ids.clone());
         let entities = EntitiesViewModel::new(
@@ -109,6 +112,7 @@ impl App {
             ids,
             parts,
             manifest,
+            check,
             home: HomeViewModel::new(),
             project,
             entities,
@@ -160,6 +164,7 @@ impl Widget for App {
         self.session.wire_all(ctx);
         self.point_workspace_lists(ctx);
         self.manifest.wire(ctx);
+        self.check.wire(ctx);
         commands::register(
             ctx,
             &CommandDeps {

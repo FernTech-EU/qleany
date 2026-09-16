@@ -11,6 +11,7 @@ use teksilo::widgets::{
 
 use crate::app::App;
 use crate::app_ids::AppIds;
+use crate::check::{CheckBadge, CheckViewModel};
 use crate::manifest::ManifestViewModel;
 use crate::session::Session;
 use crate::shell::TITLE_BAR_HEIGHT;
@@ -27,6 +28,9 @@ use crate::shell::theme_button::ThemeButton;
 /// controls in an ordinary strip and lets the OS draw the frame.
 pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> WidgetId {
     let manifest = ManifestViewModel::new(session.app_ctx.clone(), ids.clone());
+    // Validation is shell state, not a screen: the badge is in the title bar and
+    // the navigation rail reads its verdict to decide whether Generate is reachable.
+    let check = CheckViewModel::new(session.app_ctx.clone(), manifest.is_open());
     let parts = MenuParts {
         manifest_open: manifest.is_open(),
         can_save: manifest.can_save(),
@@ -35,7 +39,7 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
         can_undo: Signal::new(false),
         can_redo: Signal::new(false),
         dark: Signal::new(false),
-        check_critical: Signal::new(false),
+        check_critical: check.critical(),
     };
 
     let menubar = MenuBar::from_model(menus::build_menu(&parts))
@@ -50,8 +54,9 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
         parts.can_save.clone(),
     );
     let theme = ThemeButton::new(parts.dark.clone());
+    let badge = CheckBadge::new(check.clone());
 
-    let body = App::new(session, ids, parts.clone(), manifest.clone());
+    let body = App::new(session, ids, parts.clone(), manifest.clone(), check);
 
     match tree.title_bar_host() {
         Some(host) => {
@@ -61,6 +66,7 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
                     alignment: VAlignment::Center
                     child: menubar
                     child: save
+                    child: badge
                 }
             );
             let trailing = teksu!(
@@ -109,6 +115,7 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
                     alignment: VAlignment::Center
                     child: menubar
                     child: save
+                    child: badge
                     Expand::horizontal
                     child: theme
                 }

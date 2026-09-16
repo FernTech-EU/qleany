@@ -26,6 +26,7 @@ pub mod undo_redo;
 pub mod app;
 pub mod app_ids;
 pub mod bootstrap;
+pub mod check;
 pub mod entities;
 pub mod features;
 pub mod home;

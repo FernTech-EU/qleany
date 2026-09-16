@@ -46,3 +46,28 @@ pub fn more() -> IconWidget {
 pub fn diagram() -> IconWidget {
     IconWidget::from_svg_icon(res!("assets/icons/action/diagram.svg")).icon_size(SIZE)
 }
+
+/// The manifest validates.
+pub fn check_ok() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/check.svg")).icon_size(SIZE)
+}
+
+/// The manifest has warnings: it will generate, but something looks wrong.
+pub fn check_warning() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/warning.svg")).icon_size(SIZE)
+}
+
+/// The manifest has a critical error: it will not generate.
+pub fn check_critical() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/error.svg")).icon_size(SIZE)
+}
+
+/// Dismiss a panel.
+pub fn close() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/close.svg")).icon_size(SIZE)
+}
+
+/// Run something again.
+pub fn refresh() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/refresh.svg")).icon_size(SIZE)
+}

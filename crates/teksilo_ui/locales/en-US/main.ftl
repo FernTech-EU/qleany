@@ -276,6 +276,15 @@ dto-disable-title = Delete this DTO?
 dto-disable-message = { $name } and its { $count } fields will be deleted.
 dto-disable-confirm = Delete
 
+## Manifest validation
+
+check-panel-title = Manifest validation
+check-recheck = Check again
+check-all-clear = This manifest validates.
+check-tooltip-ok = The manifest validates
+check-tooltip-warning = The manifest has warnings
+check-tooltip-critical = The manifest has errors and will not generate
+
 ## Shared
 
 common-cancel = Cancel
