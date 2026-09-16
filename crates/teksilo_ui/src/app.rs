@@ -12,6 +12,7 @@ use crate::app::nav::NavRail;
 use crate::app_ids::AppIds;
 use crate::home::{self, HomeViewModel};
 use crate::manifest::ManifestViewModel;
+use crate::project::{ProjectPage, ProjectViewModel};
 use crate::session::Session;
 use crate::shell::menus::MenuParts;
 
@@ -20,6 +21,12 @@ pub struct App {
     ids: AppIds,
     parts: MenuParts,
     manifest: ManifestViewModel,
+    // The screens' view-models are built once and kept, never built inside `build`.
+    // A rebuild would otherwise hand each screen a fresh set of signals, and
+    // anything held in one, a selection, a pending edit, a bridged combo value,
+    // would reset every time anything on the window asked for a rebuild.
+    home: HomeViewModel,
+    project: ProjectViewModel,
     root_child: Option<WidgetId>,
 }
 
@@ -30,11 +37,14 @@ impl App {
         parts: MenuParts,
         manifest: ManifestViewModel,
     ) -> Self {
+        let project = ProjectViewModel::new(session.single_global.clone(), ids.clone());
         Self {
             session,
             ids,
             parts,
             manifest,
+            home: HomeViewModel::new(),
+            project,
             root_child: None,
         }
     }
@@ -72,11 +82,8 @@ impl Widget for App {
         );
 
         let pages = Switcher::new(selected)
-            .child(home::page::page(
-                HomeViewModel::new(),
-                self.manifest.clone(),
-            ))
-            .child(TextWidget::new(tr!(nav_project())))
+            .child(home::page::page(self.home.clone(), self.manifest.clone()))
+            .child(ProjectPage::new(self.project.clone()))
             .child(TextWidget::new(tr!(nav_entities())))
             .child(TextWidget::new(tr!(nav_features())))
             .child(TextWidget::new(tr!(nav_user_interface())))

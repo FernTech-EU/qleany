@@ -118,6 +118,28 @@ about-docs-link = Documentation
 about-repository-link = Repository
 about-close = Close
 
+## Forms
+
+form-required-marker = *
+
+## Project settings screen
+
+project-title = Project settings
+project-language = Language
+project-language-rust = Rust
+project-language-cpp-qt = C++ / Qt
+project-application-name = Application name
+project-application-name-placeholder = Enter application name
+project-application-name-required = Application name is required
+project-organisation-name = Organisation name
+project-organisation-name-placeholder = Enter organisation name
+project-organisation-name-required = Organisation name is required
+project-organisation-domain = Organisation domain
+project-organisation-domain-placeholder = Enter organisation domain, for example com.example
+project-organisation-domain-required = Organisation domain is required
+project-prefix-path = Prefix path
+project-prefix-path-placeholder = default: { $path }
+
 ## Shared
 
 common-cancel = Cancel

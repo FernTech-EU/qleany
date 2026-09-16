@@ -9,6 +9,7 @@ use teksilo::widgets::{
 use crate::home::home_vm::{DocLink, HomeViewModel, doc_links};
 use crate::intents::name;
 use crate::manifest::ManifestViewModel;
+use crate::shared::form::heading;
 
 /// Width of a documentation card. Fixed so the `Wrap` reflows into a tidy grid
 /// rather than a ragged one of nine different widths, and wide enough for the
@@ -78,10 +79,10 @@ pub fn page(home: HomeViewModel, manifest: ManifestViewModel) -> impl Widget {
             Padding::new(20.0, 24.0, 20.0, 24.0) {
                 VStack {
                     spacing: 20.0
-                    TextWidget::new(tr!(home_title()))
+                    child: heading(tr!(home_title()))
                     TextWidget::new(tr!(home_subtitle()))
                     child: actions
-                    TextWidget::new(tr!(home_documentation()))
+                    child: heading(tr!(home_documentation()))
                     child: cards
                     child: dev_block
                 }

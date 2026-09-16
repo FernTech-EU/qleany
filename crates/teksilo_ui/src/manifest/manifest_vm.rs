@@ -10,11 +10,12 @@ use teksilo::platform::file_dialog::{FileDialogRequest, FileDialogResult};
 use teksilo::prelude::*;
 
 use frontend::AppContext;
-use frontend::commands::handling_manifest_commands;
+use frontend::commands::{handling_manifest_commands, undo_redo_commands};
 use frontend::common::event::{DirectAccessEntity, EntityEvent, Event, Origin};
 use frontend::handling_manifest::dtos::{LoadDto, SaveDto};
 
 use crate::app_ids::AppIds;
+use crate::bootstrap;
 
 /// Every entity whose creation, update or removal means the manifest on disk is
 /// now out of date.
@@ -202,6 +203,7 @@ impl ManifestViewModel {
             self.fail(&e.to_string());
             return;
         }
+        self.close_undo_stacks();
         self.ids.clear();
         self.is_open.set(false);
         self.path.set(String::new());
@@ -289,9 +291,45 @@ impl ManifestViewModel {
     /// by one function and neither can disagree with the other.
     fn adopt(&self, workspace_id: u64, path: &str) {
         self.ids.workspace_id.set(Some(workspace_id));
+        // The screens edit a `Global` and a `UserInterface` rather than the
+        // workspace itself, and both hang off it. Resolved here, once, so no screen
+        // has to walk the tree to find the row it was opened to edit.
+        if let Some((global, user_interface)) =
+            bootstrap::workspace_children(&self.app_ctx, workspace_id)
+        {
+            self.ids.global_id.set(Some(global));
+            self.ids.user_interface_id.set(Some(user_interface));
+        }
+        self.open_undo_stacks();
         self.path.set(path.to_string());
         self.is_open.set(true);
         self.begin_settling_clean();
+    }
+
+    /// Mint one undo stack per screen that mutates the manifest.
+    ///
+    /// After the load, never before: a load writes the whole store, and a stack that
+    /// existed while it ran would fill with hundreds of entries none of which is an
+    /// edit the user made. Any stack left over from a previous manifest is deleted
+    /// first, so reopening cannot leak one.
+    fn open_undo_stacks(&self) {
+        self.close_undo_stacks();
+        for stack in self.ids.stacks() {
+            stack.set(Some(undo_redo_commands::create_new_stack(&self.app_ctx)));
+        }
+    }
+
+    /// Give every stack back. The history belonged to the manifest that is closing;
+    /// keeping it would let Ctrl+Z replay edits into whatever opens next.
+    fn close_undo_stacks(&self) {
+        for stack in self.ids.stacks() {
+            if let Some(id) = stack.get()
+                && let Err(e) = undo_redo_commands::delete_stack(&self.app_ctx, id)
+            {
+                log::warn!("could not delete undo stack {id}: {e}");
+            }
+            stack.set(None);
+        }
     }
 
     /// A load or a close writes the whole store, and every one of those writes
@@ -421,5 +459,96 @@ mod tests {
 
         vm.path.set("/tmp/qleany.yaml".to_string());
         assert_eq!(title.get().resolve_now(), "Qleany - /tmp/qleany.yaml");
+    }
+
+    /// Qleany's own manifest, which the repo is guaranteed to have. Read only:
+    /// nothing below saves.
+    fn qleany_manifest() -> &'static str {
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../../qleany.yaml")
+    }
+
+    /// A view-model with its context to hand, so a test can look at the store
+    /// afterwards rather than only at the view-model's own signals.
+    fn vm_with_context() -> (Rc<AppContext>, ManifestViewModel, AppIds) {
+        let ctx = Rc::new(AppContext::new());
+        handling_app_lifecycle_commands::initialize_app(&ctx).expect("initialize_app");
+        let ids = AppIds::new();
+        (ctx.clone(), ManifestViewModel::new(ctx, ids.clone()), ids)
+    }
+
+    /// Opening resolves the two rows the screens actually edit.
+    ///
+    /// The load event carries only the workspace id; `Global` and `UserInterface`
+    /// hang off it, and a screen that had to find them itself would be the fourth
+    /// place in the codebase that walks this tree.
+    #[test]
+    fn opening_resolves_the_rows_the_screens_edit() {
+        let (_ctx, vm, ids) = vm_with_context();
+        vm.open_path(qleany_manifest());
+
+        assert!(
+            vm.is_open().get(),
+            "the manifest did not open: {:?}",
+            vm.error.get()
+        );
+        assert!(ids.workspace_id.get().is_some());
+        assert!(
+            ids.global_id.get().is_some(),
+            "Project settings would be empty"
+        );
+        assert!(
+            ids.user_interface_id.get().is_some(),
+            "the User Interface screen would be empty"
+        );
+    }
+
+    /// One stack per screen that mutates the manifest, all distinct, all minted
+    /// after the load rather than before it.
+    #[test]
+    fn opening_mints_one_undo_stack_per_screen() {
+        let (_ctx, vm, ids) = vm_with_context();
+        vm.open_path(qleany_manifest());
+
+        let stacks: Vec<u64> = ids.stacks().iter().filter_map(|s| s.get()).collect();
+        assert_eq!(stacks.len(), 4, "every mutating screen needs its own stack");
+        let mut unique = stacks.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(
+            unique.len(),
+            4,
+            "two screens are sharing a stack: {stacks:?}"
+        );
+    }
+
+    /// Reopening does not leak stacks: the history belonged to the manifest that
+    /// closed, and a stale stack would let Ctrl+Z replay one manifest's edits into
+    /// the next.
+    #[test]
+    fn reopening_replaces_the_stacks_rather_than_adding_to_them() {
+        let (_ctx, vm, ids) = vm_with_context();
+        vm.open_path(qleany_manifest());
+        let first: Vec<u64> = ids.stacks().iter().filter_map(|s| s.get()).collect();
+
+        vm.open_path(qleany_manifest());
+        let second: Vec<u64> = ids.stacks().iter().filter_map(|s| s.get()).collect();
+
+        assert_eq!(second.len(), 4);
+        for id in &second {
+            assert!(!first.contains(id), "stack {id} survived a reopen");
+        }
+    }
+
+    #[test]
+    fn closing_gives_every_stack_back() {
+        let (_ctx, vm, ids) = vm_with_context();
+        vm.open_path(qleany_manifest());
+        vm.close();
+
+        for stack in ids.stacks() {
+            assert_eq!(stack.get(), None);
+        }
+        assert_eq!(ids.global_id.get(), None);
+        assert!(!vm.is_open().get());
     }
 }

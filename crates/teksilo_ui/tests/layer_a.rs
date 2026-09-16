@@ -7,6 +7,12 @@
 //! Every handle loads synchronously on `set_id` / `set_owner_id`; `wire` only ever
 //! *re*-loads, in response to an event. So none of this needs a `BuildContext`, an
 //! event source, or a display.
+//!
+//! It does need a backend. Under `mocks` each handle is replaced by a twin that
+//! fabricates rows and writes nowhere, so every assertion here would be an
+//! assertion about a stub. That arm has its own file, `mocks_arm.rs`, which asserts
+//! what the stub is actually for.
+#![cfg(not(feature = "mocks"))]
 
 use std::rc::Rc;
 

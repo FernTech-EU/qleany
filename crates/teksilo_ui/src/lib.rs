@@ -25,11 +25,14 @@ pub mod undo_redo;
 // Hand-written.
 pub mod app;
 pub mod app_ids;
+pub mod bootstrap;
 pub mod home;
 pub mod icons;
 pub mod intents;
 pub mod manifest;
+pub mod project;
 pub mod settings_keys;
+pub mod shared;
 pub mod shell;
 pub mod style;
 
@@ -79,6 +82,10 @@ pub fn run() {
 
     let session = Session::new(app_ctx.clone());
     let ids = crate::app_ids::AppIds::new();
+    // `System` outlives every manifest: it is seeded by `initialize_app` and holds
+    // the generated files. Resolved once here rather than looked up again by each
+    // screen that needs it.
+    ids.system_id.set(crate::bootstrap::system_id(&app_ctx));
 
     let i18n = I18nConfig::new()
         .source_locale("en-US".parse().expect("en-US is a valid locale"))
