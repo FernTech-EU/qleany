@@ -319,11 +319,8 @@ impl EntitiesViewModel {
 
     /// Install the subscriptions. Called from `build`, on **every** build.
     pub fn wire(&self, ctx: &mut BuildContext) {
-        // The list follows the open manifest.
-        let list = self.list.clone();
-        let workspace = self.ids.workspace_id.clone();
-        ctx.effect(&workspace, move |id| list.set_owner_id(*id));
-        self.list.set_owner_id(workspace.get());
+        // The list itself is pointed at the open manifest by `App`: it is read by
+        // more than this screen, so it cannot belong to whichever one is mounted.
 
         // The form follows the selection.
         let me = self.clone();

@@ -11,6 +11,7 @@ use crate::app::nav::NavRail;
 
 use crate::app_ids::AppIds;
 use crate::entities::{EntitiesPage, EntitiesViewModel, FieldViewModel};
+use crate::features::{DtoSide, DtoViewModel, FeaturesPage, FeaturesViewModel, UseCaseViewModel};
 use crate::home::{self, HomeViewModel};
 use crate::manifest::ManifestViewModel;
 use crate::project::{ProjectPage, ProjectViewModel};
@@ -32,6 +33,10 @@ pub struct App {
     entities: EntitiesViewModel,
     fields: FieldViewModel,
     user_interface: UserInterfaceViewModel,
+    features: FeaturesViewModel,
+    use_cases: UseCaseViewModel,
+    dto_in: DtoViewModel,
+    dto_out: DtoViewModel,
     root_child: Option<WidgetId>,
 }
 
@@ -66,6 +71,39 @@ impl App {
             ids.clone(),
             project.language(),
         );
+        let features = FeaturesViewModel::new(
+            session.app_ctx.clone(),
+            ids.clone(),
+            session.workspace_features.clone(),
+            session.single_feature.clone(),
+        );
+        let use_cases = UseCaseViewModel::new(
+            session.app_ctx.clone(),
+            ids.clone(),
+            session.feature_use_cases.clone(),
+            session.single_use_case.clone(),
+            features.selected(),
+            session.workspace_entities.clone(),
+        );
+        // Two panes, each with its own handles. The session mints one `SingleDto`,
+        // one `DtoFieldsListModel` and one `SingleDtoField` and wires those; a
+        // second pane sharing them would show one DTO twice, and a second pane
+        // taking fresh ones that nobody wired would be deaf and merely look empty.
+        // `DtoViewModel` therefore builds its own and wires them itself.
+        let dto_in = DtoViewModel::new(
+            session.app_ctx.clone(),
+            ids.clone(),
+            DtoSide::In,
+            use_cases.selected(),
+            use_cases.name(),
+        );
+        let dto_out = DtoViewModel::new(
+            session.app_ctx.clone(),
+            ids.clone(),
+            DtoSide::Out,
+            use_cases.selected(),
+            use_cases.name(),
+        );
         Self {
             session,
             ids,
@@ -76,6 +114,10 @@ impl App {
             entities,
             fields,
             user_interface,
+            features,
+            use_cases,
+            dto_in,
+            dto_out,
             root_child: None,
         }
     }
@@ -87,12 +129,36 @@ impl std::fmt::Debug for App {
     }
 }
 
+impl App {
+    /// Point the lists that belong to the open manifest rather than to a screen.
+    ///
+    /// `workspace.entities` and `workspace.features` are read by more than one
+    /// screen: the Features screen lists entities so a use case can name the ones it
+    /// touches, and both DTO combos read them too. A list pointed by whichever
+    /// screen happens to be mounted is empty on every other one, which is a bug that
+    /// only shows up on the screen that did not do the pointing.
+    ///
+    /// The lists whose owner is a *selection* stay with the screen that owns the
+    /// selection.
+    fn point_workspace_lists(&self, ctx: &mut BuildContext) {
+        let session = self.session.clone();
+        let workspace = self.ids.workspace_id.clone();
+        ctx.effect(&workspace, move |id| {
+            session.workspace_entities_owner.set(*id);
+            session.workspace_features_owner.set(*id);
+        });
+        self.session.workspace_entities_owner.set(workspace.get());
+        self.session.workspace_features_owner.set(workspace.get());
+    }
+}
+
 impl Widget for App {
     fn build(&mut self, ctx: &mut BuildContext) -> Vec<WidgetId> {
         // Every generated handle re-subscribes on every build: a `BuildContext`
         // subscription lives exactly one build cycle, so a guard here would leave
         // the whole app deaf after its first rebuild.
         self.session.wire_all(ctx);
+        self.point_workspace_lists(ctx);
         self.manifest.wire(ctx);
         commands::register(
             ctx,
@@ -120,7 +186,12 @@ impl Widget for App {
                 self.entities.clone(),
                 self.fields.clone(),
             ))
-            .child(TextWidget::new(tr!(nav_features())))
+            .child(FeaturesPage::new(
+                self.features.clone(),
+                self.use_cases.clone(),
+                self.dto_in.clone(),
+                self.dto_out.clone(),
+            ))
             .child(UserInterfacePage::new(self.user_interface.clone()))
             .child(TextWidget::new(tr!(nav_generate())));
 

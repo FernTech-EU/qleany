@@ -205,6 +205,77 @@ ui-target-rust-android = Android (UniFFI)
 ui-target-cpp-qt-widgets = Qt Widgets
 ui-target-cpp-qt-quick = Qt Quick
 
+## Features screen
+
+features-title = Features
+features-list-heading = Features
+features-add = Add feature
+features-delete = Delete feature
+features-empty = No features yet
+features-empty-hint = A feature groups the use cases that belong together.
+features-none-selected = No feature selected
+features-none-selected-hint = Pick a feature on the left to edit it.
+features-name = Name
+features-name-placeholder = Enter feature name
+features-name-required = Feature name is required
+features-name-snake-case = Feature name must be in snake_case
+
+## Use cases
+
+use-cases-list-heading = Use cases
+use-cases-add = Add use case
+use-cases-delete = Delete use case
+use-cases-empty = No use cases yet
+use-cases-empty-hint = A use case is one operation this feature performs.
+use-cases-none-selected = No use case selected
+use-cases-none-selected-hint = Pick a use case to edit it.
+use-cases-name = Name
+use-cases-name-placeholder = Enter use case name
+use-cases-name-required = Use case name is required
+use-cases-name-snake-case = Use case name must be in snake_case
+use-cases-read-only = Read only
+use-cases-read-only-hint = Reads and never writes, so it has nothing to undo.
+use-cases-undoable = Undoable
+use-cases-long-operation = Long operation
+use-cases-entities = Entities this use case touches
+use-cases-entities-empty = No entities yet
+use-cases-entities-empty-hint = Add an entity on the Entities screen first.
+
+## DTOs
+
+dto-in-heading = Input DTO
+dto-out-heading = Output DTO
+dto-in-enable = Enable DTO In
+dto-out-enable = Enable DTO Out
+dto-in-disabled-hint = Enable DTO In to configure it
+dto-out-disabled-hint = Enable DTO Out to configure it
+dto-name = Name
+dto-name-placeholder = Enter DTO name
+dto-name-required = DTO name is required
+dto-name-pascal-case = DTO name must be in PascalCase
+dto-fields-heading = Fields
+dto-field-add = Add field
+dto-field-delete = Delete field
+dto-fields-empty = No fields yet
+dto-fields-empty-hint = Add one to describe what this DTO carries.
+dto-field-none-selected = No field selected
+dto-field-none-selected-hint = Pick a field to edit it.
+dto-field-name = Name
+dto-field-name-placeholder = Enter field name
+dto-field-name-required = Field name is required
+dto-field-name-snake-case = DTO field name must be in snake_case
+dto-field-type = Type
+dto-field-optional = Optional
+dto-field-is-list = List
+dto-field-enum-name = Enum name
+dto-field-enum-name-placeholder = Enter enum name
+dto-field-enum-name-required = Enum name is required
+dto-field-enum-name-pascal-case = Enum name must be in PascalCase
+dto-field-enum-values = Enum values, one per line in PascalCase
+dto-disable-title = Delete this DTO?
+dto-disable-message = { $name } and its { $count } fields will be deleted.
+dto-disable-confirm = Delete
+
 ## Shared
 
 common-cancel = Cancel

@@ -27,6 +27,7 @@ pub mod app;
 pub mod app_ids;
 pub mod bootstrap;
 pub mod entities;
+pub mod features;
 pub mod home;
 pub mod icons;
 pub mod intents;
