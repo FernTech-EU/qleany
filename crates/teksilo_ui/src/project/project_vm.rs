@@ -205,9 +205,17 @@ impl ProjectViewModel {
         // The handle's code to the combo's value. One way only: the reverse is
         // `set_language`, called from the combo's own selection handler, and a
         // second effect running the other way would be a loop rather than a bridge.
-        let me = self.clone();
+        // Captures the combo's signal alone, never `self`. The signal observed
+        // here belongs to the generated handle, and that handle keeps an
+        // `ObserverHandle` on it for its own dirty tracking. A closure holding
+        // the view-model would therefore hold the handle, so tearing the window
+        // down would drop the handle from inside the signal's own borrow and
+        // abort with "RefCell already borrowed" in a destructor.
+        let language = self.language.clone();
         let code = self.single.language();
-        ctx.effect(&code, move |_| me.sync_language());
+        ctx.effect(&code, move |code| {
+            language.set_if_changed(Some(Language::from_code(code)));
+        });
         self.sync_language();
     }
 

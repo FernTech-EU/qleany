@@ -516,9 +516,17 @@ impl DtoViewModel {
         let me = self.clone();
         ctx.effect(&tick, move |_| me.poll_enum_editor(&last_revision, &wake));
 
-        let me = self.clone();
+        // Captures the combo's signal alone, never `self`. The signal observed
+        // here belongs to the generated handle, and that handle keeps an
+        // `ObserverHandle` on it for its own dirty tracking. A closure holding
+        // the view-model would therefore hold the handle, so tearing the window
+        // down would drop the handle from inside the signal's own borrow and
+        // abort with "RefCell already borrowed" in a destructor.
+        let document = self.enum_document.clone();
         let values = self.field.enum_values();
-        ctx.effect(&values, move |_| me.seed_enum_document());
+        ctx.effect(&values, move |wanted| {
+            crate::entities::field_vm::fill_enum_document(&document, wanted)
+        });
         self.seed_enum_document();
     }
 
@@ -600,16 +608,10 @@ impl DtoViewModel {
     }
 
     fn seed_enum_document(&self) {
-        let wanted = self.field.enum_values().get();
-        if let Ok(current) = self.enum_document.to_plain_text()
-            && crate::entities::field_vm::split_enum_values(&current) == wanted
-        {
-            return;
-        }
-        let joined = crate::entities::field_vm::join_enum_values(&wanted);
-        if let Err(e) = self.enum_document.set_plain_text(&joined) {
-            log::error!("could not fill the enum editor: {e}");
-        }
+        crate::entities::field_vm::fill_enum_document(
+            &self.enum_document,
+            &self.field.enum_values().get(),
+        );
     }
 
     /// Move a row, as one named undo entry.

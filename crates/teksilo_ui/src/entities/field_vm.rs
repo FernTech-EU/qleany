@@ -313,6 +313,23 @@ pub fn field_subtitle(row: &EntityFieldsRow) -> String {
 ///
 /// On newlines only, never on commas or spaces: a variant may carry a whole struct
 /// body, and `Image { name: String, width: i64 }` is one variant with a comma in it.
+/// Put a field's enum variants into an editor document, one per line.
+///
+/// A free function over the document and the values rather than a view-model
+/// method, because it is called from an observer on the signal the values live
+/// in. A closure that reached the view-model would own the generated handle that
+/// also observes that signal, and dropping the two together aborts the process.
+pub fn fill_enum_document(document: &TextDocument, wanted: &[String]) {
+    if let Ok(current) = document.to_plain_text()
+        && split_enum_values(&current) == wanted
+    {
+        return;
+    }
+    if let Err(e) = document.set_plain_text(&join_enum_values(wanted)) {
+        log::error!("could not fill the enum editor: {e}");
+    }
+}
+
 pub fn split_enum_values(text: &str) -> Vec<String> {
     text.lines()
         .map(str::trim)
@@ -599,9 +616,15 @@ impl FieldViewModel {
 
         // And the other direction: a field that is selected, reloaded or undone puts
         // its variants into the editor.
-        let me = self.clone();
+        // Captures the combo's signal alone, never `self`. The signal observed
+        // here belongs to the generated handle, and that handle keeps an
+        // `ObserverHandle` on it for its own dirty tracking. A closure holding
+        // the view-model would therefore hold the handle, so tearing the window
+        // down would drop the handle from inside the signal's own borrow and
+        // abort with "RefCell already borrowed" in a destructor.
+        let document = self.enum_document.clone();
         let values = self.single.enum_values();
-        ctx.effect(&values, move |_| me.seed_enum_document());
+        ctx.effect(&values, move |wanted| fill_enum_document(&document, wanted));
         self.seed_enum_document();
 
         // A different entity means a different set of fields, and the one that was
@@ -671,18 +694,7 @@ impl FieldViewModel {
     /// the same variants the document already holds, and re-seeding from that would
     /// throw away the caret and any trailing newline the user had just typed.
     fn seed_enum_document(&self) {
-        let wanted = self.single.enum_values().get();
-        if let Ok(current) = self.enum_document.to_plain_text()
-            && split_enum_values(&current) == wanted
-        {
-            return;
-        }
-        if let Err(e) = self
-            .enum_document
-            .set_plain_text(&join_enum_values(&wanted))
-        {
-            log::error!("could not fill the enum editor: {e}");
-        }
+        fill_enum_document(&self.enum_document, &self.single.enum_values().get());
     }
 
     fn prune_selection(&self) {
