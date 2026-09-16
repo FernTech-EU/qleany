@@ -143,7 +143,19 @@ impl ManifestViewModel {
     // ── commands ─────────────────────────────────────────────────────────────
 
     /// Load a manifest from a path. Any open manifest is closed first.
+    ///
+    /// The failure goes to the error channel the shell already shows, which is what
+    /// every caller that has nothing to add wants. A caller that has to *stop* on a
+    /// failure, rather than report one, uses [`Self::try_open_path`].
     pub fn open_path(&self, path: &str) {
+        let _ = self.try_open_path(path);
+    }
+
+    /// Load a manifest, and say whether it worked.
+    ///
+    /// Reports through the error channel as well, so a caller can ignore the result
+    /// and get the same behaviour as [`Self::open_path`].
+    pub fn try_open_path(&self, path: &str) -> Result<(), String> {
         if self.is_open.get() {
             self.close();
         }
@@ -159,8 +171,13 @@ impl ManifestViewModel {
             Ok(dto) => {
                 self.adopt(dto.workspace_id, &dto.manifest_path);
                 self.error.set(None);
+                Ok(())
             }
-            Err(e) => self.fail(&e.to_string()),
+            Err(e) => {
+                let message = e.to_string();
+                self.fail(&message);
+                Err(message)
+            }
         }
     }
 

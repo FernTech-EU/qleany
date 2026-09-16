@@ -28,6 +28,7 @@ pub mod app;
 pub mod app_ids;
 pub mod bootstrap;
 pub mod check;
+pub mod demo;
 pub mod edit;
 pub mod entities;
 pub mod features;

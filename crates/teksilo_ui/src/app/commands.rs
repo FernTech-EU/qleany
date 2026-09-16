@@ -9,14 +9,13 @@
 use teksilo::core::BindingLevel;
 use teksilo::prelude::*;
 
-use teksilo::widgets::{MessageBox, MessageBoxButtons, StandardButton};
-
 use crate::about;
 use crate::app_ids::{AppIds, Screen};
+use crate::demo::{self, DemoViewModel};
 use crate::edit::UndoViewModel;
 use crate::entities::EntitiesViewModel;
 use crate::intents::name;
-use crate::manifest::ManifestViewModel;
+use crate::manifest::{ManifestViewModel, with_unsaved_settled};
 use crate::new_manifest::{self, NewManifestViewModel};
 use crate::shell::menus::MenuParts;
 
@@ -29,6 +28,7 @@ pub struct CommandDeps {
     pub entities: EntitiesViewModel,
     pub undo: UndoViewModel,
     pub new_manifest: NewManifestViewModel,
+    pub demo: DemoViewModel,
 }
 
 /// Register everything. Called from `App::build`, on every build: an action
@@ -39,6 +39,7 @@ pub fn register(ctx: &mut BuildContext, deps: &CommandDeps) {
     register_manifest(ctx, deps);
     register_entities(ctx, deps);
     register_undo(ctx, deps);
+    register_demo(ctx, deps);
     register_help(ctx, deps);
 }
 
@@ -55,25 +56,33 @@ fn register_help(ctx: &mut BuildContext, deps: &CommandDeps) {
     // opened this dialog rather than re-triggering it.
     let vm = deps.manifest.clone();
     ctx.register_action_global(Action::new(name::QUIT).on_invoke(move |_i, c| {
-        if !vm.can_save().get() {
-            c.close_window_forced();
-            return;
-        }
+        with_unsaved_settled(
+            &vm,
+            c,
+            tr!(quit_unsaved_title()),
+            tr!(quit_unsaved_message()),
+            |ctx| ctx.close_window_forced(),
+        );
+    }));
+}
+
+/// The demo generator.
+///
+/// Guarded the same way Quit is, and for the same reason: the demo loads a manifest
+/// of its own into the one store this application has, so starting it with unsaved
+/// work discards that work. The Slint UI did it without asking.
+fn register_demo(ctx: &mut BuildContext, deps: &CommandDeps) {
+    let manifest = deps.manifest.clone();
+    let vm = deps.demo.clone();
+    ctx.register_action_global(Action::new(name::RUN_DEMO).on_invoke(move |_i, c| {
         let vm = vm.clone();
-        MessageBox::question(tr!(quit_unsaved_title()))
-            .text(tr!(quit_unsaved_message()))
-            // The preset teksilo makes Cancel the escape and No-equivalent: the
-            // safe answer is the one Escape takes.
-            .buttons(MessageBoxButtons::SaveDiscardCancel)
-            .on_result(move |result, ctx| match result.button {
-                StandardButton::Save => {
-                    vm.save();
-                    ctx.close_window_forced();
-                }
-                StandardButton::Discard => ctx.close_window_forced(),
-                _ => {}
-            })
-            .present(c);
+        with_unsaved_settled(
+            &manifest,
+            c,
+            tr!(demo_unsaved_title()),
+            tr!(demo_unsaved_message()),
+            move |ctx| demo::present(&vm, ctx),
+        );
     }));
 }
 

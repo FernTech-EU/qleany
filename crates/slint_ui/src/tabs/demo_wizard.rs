@@ -126,7 +126,7 @@ fn setup_start_demo_callback(app: &App, app_context: &Arc<AppContext>) {
 
                                 // UI line
                                 let ui_line = match target_language {
-                                    LanguageOption::Rust => "Scaffolds for multiple UIs: CLI and Slint",
+                                    LanguageOption::Rust => "Scaffolds for multiple UIs: CLI and Teksilo",
                                     LanguageOption::CppQt => "Scaffolds for multiple UIs: QtQuick and QtWidgets",
                                 };
                                 wiz.set_summary_ui_line(slint::SharedString::from(ui_line));

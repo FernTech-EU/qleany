@@ -71,3 +71,8 @@ pub fn close() -> IconWidget {
 pub fn refresh() -> IconWidget {
     IconWidget::from_svg_icon(res!("assets/icons/action/refresh.svg")).icon_size(SIZE)
 }
+
+/// Put something on the clipboard.
+pub fn copy() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/copy.svg")).icon_size(SIZE)
+}

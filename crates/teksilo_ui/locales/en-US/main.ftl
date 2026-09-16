@@ -394,6 +394,55 @@ confirm-delete-use-case = { $name } goes, with its input and output DTOs.
 quit-unsaved-title = Save before quitting?
 quit-unsaved-message = This manifest has changes that are not on disk yet.
 
+## Demo generator
+
+demo-title = Run the demo
+demo-blurb = Generate a complete sample project: a manifest, every crate it implies, and a build that runs.
+demo-language = Language
+demo-language-rust-blurb = A Cargo workspace, with a CLI and a Teksilo window.
+demo-language-cpp-qt-blurb = A CMake project, with Qt Quick and Qt Widgets applications.
+demo-destination = Destination
+demo-browse = Browse...
+demo-destination-hint = The project is written into this folder, which is created if it does not exist.
+demo-generate = Generate
+demo-open-folder = Open folder
+demo-copy = Copy the command
+demo-copied = Copied
+
+demo-running-title = Generating the demo project
+
+demo-step-preparing = Preparing...
+demo-step-folder = Creating the output folder...
+demo-step-manifest = Creating the manifest...
+demo-step-loading = Loading the manifest...
+demo-step-checks = Validating the manifest...
+demo-step-listing = Working out which files to write...
+demo-step-rendering = Generating code...
+demo-step-comparing = Comparing with the files on disk...
+demo-step-writing = Writing files to disk...
+demo-step-git = Creating the git repository and its first tag...
+demo-step-done = Done!
+
+demo-success = Demo project generated successfully!
+demo-summary-stats = Generated { $files } files from a manifest of { $lines } lines.
+demo-includes-title = Your project includes:
+demo-includes-crud = Complete CRUD infrastructure: controllers, DTOs, use cases and repositories
+demo-includes-undo = Multi-stack undo and redo, with cascade snapshot and restore
+demo-includes-events = A thread-safe event system with buffering, so events fire only on success
+demo-includes-relationships = Relationship management with ordering and cascade deletion
+demo-includes-tests = A generated test suite
+demo-includes-ui = Scaffolds for two user interfaces: { $first } and { $second }
+demo-ui-teksilo = Teksilo
+demo-next-step = Next step:
+
+demo-error-exists = A project already exists at { $path }. Remove it, or choose another folder.
+demo-error-no-git = Git is not installed, or is not on PATH. The C++/Qt demo needs it to create the tag its build reads a version from.
+demo-error-no-git-identity = Git has no user.name or no user.email, so it cannot make the demo's first commit. Set them with: git config --global user.name "Your Name" and git config --global user.email "you@example.com"
+demo-error-failed = The demo could not be generated: { $message }
+
+demo-unsaved-title = Save before running the demo?
+demo-unsaved-message = The demo loads a manifest of its own, which closes this one. It has changes that are not on disk yet.
+
 ## Shared
 
 common-cancel = Cancel

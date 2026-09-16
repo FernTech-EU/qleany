@@ -154,6 +154,44 @@ def _tail(path, lines=25):
         return ""
 
 
+def descendants(nodes, root_id):
+    """Every node at or under `root_id`, as a list.
+
+    A modal renders in an overlay that is a sibling of the application body, so
+    the whole tree holds two of everything a modal repeats: two "Generate"
+    buttons, two "Close" buttons. Matching by label alone finds whichever comes
+    first, which is the one behind the scrim, and clicking it answers
+    UNHANDLED_ACTION because it is disabled. Scope the search instead.
+
+    Returned in document order, which a probe asserting "the two languages are
+    offered, in this order" depends on: a stack that pushed children as it found
+    them would hand back every row of every list reversed.
+    """
+    by_id = {n["id"]: n for n in nodes}
+    out, stack = [], [root_id]
+    seen = set()
+    while stack:
+        node_id = stack.pop()
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        node = by_id.get(node_id)
+        if node is None:
+            continue
+        out.append(node)
+        stack.extend(reversed(node.get("children") or []))
+    return out
+
+
+def overlay_nodes(session, role="Dialog"):
+    """Every node of the topmost overlay with `role` at its root, or []."""
+    nodes = session.nodes()
+    roots = [n for n in nodes if n.get("role") == role]
+    if not roots:
+        return []
+    return descendants(nodes, roots[-1]["id"])
+
+
 def mcp_argv(bridge, mcp=None):
     """Attach by pid rather than by token.
 

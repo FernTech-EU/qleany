@@ -225,7 +225,7 @@ pub fn execute(
             output.info(" - scaffolds for multiple UIs: QtQuick and QtWidgets");
         }
         if target_language == LanguageOption::Rust {
-            output.info(" - scaffolds for multiple UIs: CLI and Slint");
+            output.info(" - scaffolds for multiple UIs: CLI and Teksilo");
         }
         output.info("");
         output.info("Documentation: https://qleany-docs.pages.dev/");

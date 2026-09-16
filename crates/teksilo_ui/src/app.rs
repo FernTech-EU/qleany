@@ -11,6 +11,7 @@ use crate::app::nav::NavRail;
 
 use crate::app_ids::{AppIds, Screen};
 use crate::check::CheckViewModel;
+use crate::demo::DemoViewModel;
 use crate::edit::UndoViewModel;
 use crate::entities::{EntitiesPage, EntitiesViewModel, FieldViewModel};
 use crate::features::{DtoSide, DtoViewModel, FeaturesPage, FeaturesViewModel, UseCaseViewModel};
@@ -48,6 +49,7 @@ pub struct App {
     dto_out: DtoViewModel,
     generate: GenerateViewModel,
     new_manifest: NewManifestViewModel,
+    demo: DemoViewModel,
     root_child: Option<WidgetId>,
 }
 
@@ -124,6 +126,10 @@ impl App {
             use_cases.name(),
         );
         let app_ctx_for_wizard = session.app_ctx.clone();
+        // The demo loads a manifest of its own, so it goes through the same
+        // view-model every other open does rather than writing to the store behind
+        // the application's back.
+        let demo = DemoViewModel::new(session.app_ctx.clone(), manifest.clone());
         let generate = GenerateViewModel::new(
             session.app_ctx.clone(),
             ids.clone(),
@@ -148,6 +154,7 @@ impl App {
             dto_out,
             generate,
             new_manifest: NewManifestViewModel::new(app_ctx_for_wizard),
+            demo,
             root_child: None,
         }
     }
@@ -217,6 +224,7 @@ impl Widget for App {
         self.manifest.wire(ctx);
         self.check.wire(ctx);
         self.undo.wire(ctx);
+        self.demo.wire(ctx);
 
         // Keep the close guard's answer current.
         let unsaved = self.unsaved.clone();
@@ -234,6 +242,7 @@ impl Widget for App {
                 entities: self.entities.clone(),
                 undo: self.undo.clone(),
                 new_manifest: self.new_manifest.clone(),
+                demo: self.demo.clone(),
             },
         );
 
