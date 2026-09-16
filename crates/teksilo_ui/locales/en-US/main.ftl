@@ -35,10 +35,6 @@ menu-quit = &Quit
 ## Menu bar: Edit
 
 menu-edit = &Edit
-menu-undo = &Undo
-menu-undo-labelled = &Undo { $action }
-menu-redo = &Redo
-menu-redo-labelled = &Redo { $action }
 
 ## Menu bar: View
 
@@ -68,7 +64,6 @@ titlebar-redo = Redo
 ## Status strip
 
 status-manifest-saved = Manifest saved successfully
-status-manifest-created = Manifest created and loaded successfully
 status-mermaid-copied = Entities exported to mermaid markdown and copied to clipboard
 status-generated-files = Generated { $count } files
 status-error = Error: { $message }
@@ -116,7 +111,6 @@ about-made-by = Made by FernTech
 about-licence = Mozilla Public License 2.0
 about-docs-link = Documentation
 about-repository-link = Repository
-about-close = Close
 
 ## Forms
 
@@ -171,8 +165,6 @@ fields-add = Add field
 fields-delete = Delete field
 fields-empty = No fields yet
 fields-empty-hint = Add one to describe what this entity stores.
-fields-none-selected = No field selected
-fields-none-selected-hint = Pick a field on the left to edit it.
 fields-name = Name
 fields-name-placeholder = Enter field name
 fields-name-required = Field name is required
@@ -214,7 +206,6 @@ features-delete = Delete feature
 features-empty = No features yet
 features-empty-hint = A feature groups the use cases that belong together.
 features-none-selected = No feature selected
-features-none-selected-hint = Pick a feature on the left to edit it.
 features-name = Name
 features-name-placeholder = Enter feature name
 features-name-required = Feature name is required
@@ -274,7 +265,6 @@ dto-field-enum-name-pascal-case = Enum name must be in PascalCase
 dto-field-enum-values = Enum values, one per line in PascalCase
 dto-disable-title = Delete this DTO?
 dto-disable-message = { $name } and its { $count } fields will be deleted.
-dto-disable-confirm = Delete
 
 ## Manifest validation
 
@@ -289,7 +279,6 @@ check-tooltip-critical = The manifest has errors and will not generate
 
 generate-title = Generate
 generate-groups-heading = Groups
-generate-files-heading = Files
 generate-filter-placeholder = Filter by path or name
 generate-status-modified = Modified
 generate-status-new = New
@@ -443,13 +432,20 @@ demo-error-failed = The demo could not be generated: { $message }
 demo-unsaved-title = Save before running the demo?
 demo-unsaved-message = The demo loads a manifest of its own, which closes this one. It has changes that are not on disk yet.
 
+## Native file dialogs
+
+# The desktop's own dialogs, which take a resolved string rather than a
+# LocalizedString. They are still what the user reads, so they are still keys.
+
+dialog-manifest-filter = Qleany manifest
+dialog-open-manifest = Open a Qleany manifest
+dialog-save-manifest-as = Save the manifest as
+dialog-create-manifest = Create a Qleany manifest
+dialog-demo-destination = Where should the demo project go?
+
 ## Shared
 
 common-cancel = Cancel
 common-close = Close
-common-delete = Delete
-common-ok = OK
-common-save = Save
-common-discard = Discard
 common-none = None
 common-more-actions = More actions

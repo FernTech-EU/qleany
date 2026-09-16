@@ -82,8 +82,11 @@ fn finish(
     let vm = vm.clone();
     let manifest = manifest.clone();
     let request = FileDialogRequest::save_file()
-        .title("Create a Qleany manifest")
-        .add_filter("Qleany manifest", &["yaml", "yml"])
+        .title(tr!(dialog_create_manifest()).resolve_now())
+        .add_filter(
+            tr!(dialog_manifest_filter()).resolve_now(),
+            &["yaml", "yml"],
+        )
         .default_file_name("qleany.yaml");
 
     let _ = ctx.pick_file(request, move |result, _ectx| {

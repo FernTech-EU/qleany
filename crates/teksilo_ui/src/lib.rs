@@ -139,7 +139,9 @@ pub fn run() {
         .install_async_async_std()
         .initial_window(
             WindowConfig::new()
-                .title("Qleany")
+                // The same key the title reverts to when the manifest is closed,
+                // rather than a second copy of the product name.
+                .title(tr!(window_title_no_manifest()).resolve_now())
                 .size(1280, 820)
                 .min_size(960, 640)
                 .decorations(DecorationsMode::CustomChrome)

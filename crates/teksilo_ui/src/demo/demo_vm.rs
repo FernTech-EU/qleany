@@ -445,7 +445,7 @@ impl DemoViewModel {
     pub fn browse(&self, ctx: &mut EventContext) {
         let destination = self.destination.clone();
         let request = FileDialogRequest::pick_folder()
-            .title("Where should the demo project go?")
+            .title(tr!(dialog_demo_destination()).resolve_now())
             .starting_dir(expand_tilde("~"));
         let _ = ctx.pick_folder(request, move |result, _ectx| {
             if let FileDialogResult::Folder(Some(parent)) = result {

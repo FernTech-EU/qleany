@@ -234,8 +234,11 @@ impl ManifestViewModel {
     pub fn pick_open(&self, ctx: &mut EventContext) {
         let me = self.clone();
         let req = FileDialogRequest::pick_file()
-            .title("Open a Qleany manifest")
-            .add_filter("Qleany manifest", &["yaml", "yml"])
+            .title(tr!(dialog_open_manifest()).resolve_now())
+            .add_filter(
+                tr!(dialog_manifest_filter()).resolve_now(),
+                &["yaml", "yml"],
+            )
             .default_file_name("qleany.yaml");
         let _ = ctx.pick_file(req, move |res, _ectx| {
             if let FileDialogResult::File(Some(path)) = res {
@@ -248,8 +251,11 @@ impl ManifestViewModel {
     pub fn pick_save_as(&self, ctx: &mut EventContext) {
         let me = self.clone();
         let req = FileDialogRequest::save_file()
-            .title("Save the manifest as")
-            .add_filter("Qleany manifest", &["yaml", "yml"])
+            .title(tr!(dialog_save_manifest_as()).resolve_now())
+            .add_filter(
+                tr!(dialog_manifest_filter()).resolve_now(),
+                &["yaml", "yml"],
+            )
             .default_file_name("qleany.yaml");
         let _ = ctx.pick_file(req, move |res, _ectx| {
             if let FileDialogResult::File(Some(path)) = res {
