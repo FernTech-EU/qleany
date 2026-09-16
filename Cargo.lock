@@ -6036,13 +6036,9 @@ name = "qleany"
 version = "1.12.0"
 dependencies = [
  "anyhow",
- "arboard",
  "chrono",
  "clap",
- "ctrlc",
- "dirs",
  "env_logger",
- "flume",
  "heck",
  "include_dir",
  "log",
@@ -6051,15 +6047,15 @@ dependencies = [
  "qleany-cpp-qt-file-generation",
  "qleany-direct-access",
  "qleany-file-generation-shared-steps",
- "qleany-handling-app-lifecycle",
+ "qleany-frontend",
  "qleany-handling-manifest",
  "qleany-rust-file-generation",
- "rfd",
  "serde_json",
  "serde_yml",
- "slint",
- "slint-build",
+ "teksilo",
  "termimad",
+ "toml 1.1.6+spec-1.1.0",
+ "uuid",
 ]
 
 [[package]]
@@ -6203,19 +6199,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "qleany-teksilo-ui"
+name = "qleany-slint-ui"
 version = "1.12.0"
 dependencies = [
  "anyhow",
+ "arboard",
  "chrono",
+ "clap",
+ "ctrlc",
+ "dirs",
  "env_logger",
+ "flume",
  "heck",
+ "include_dir",
  "log",
  "open",
- "qleany-frontend",
- "teksilo",
- "toml 1.1.6+spec-1.1.0",
- "uuid",
+ "qleany-common",
+ "qleany-cpp-qt-file-generation",
+ "qleany-direct-access",
+ "qleany-file-generation-shared-steps",
+ "qleany-handling-app-lifecycle",
+ "qleany-handling-manifest",
+ "qleany-rust-file-generation",
+ "rfd",
+ "serde_json",
+ "serde_yml",
+ "slint",
+ "slint-build",
+ "termimad",
 ]
 
 [[package]]

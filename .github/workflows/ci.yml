@@ -64,7 +64,7 @@ jobs:
       fail-fast: false
       matrix:
         # `ui_exclude` rides alongside `flags` because `--all-features` over this
-        # workspace would turn on `qleany-teksilo-ui`'s `mocks` feature, which is a
+        # workspace would turn on `qleany`'s `mocks` feature, which is a
         # second `#[cfg]`-selected implementation of every model, not a compile
         # target. A row that got it would build and test the fabricated UI and
         # report that as the UI passing. The `teksilo-ui` job gates that crate on
@@ -78,17 +78,17 @@ jobs:
             os: ubuntu-latest
             rust: stable
             flags: "--all-features"
-            ui_exclude: "--exclude qleany-teksilo-ui"
+            ui_exclude: "--exclude qleany"
           - name: windows
             os: windows-latest
             rust: stable
             flags: "--all-features"
-            ui_exclude: "--exclude qleany-teksilo-ui"
+            ui_exclude: "--exclude qleany"
           - name: mac
             os: macos-latest
             rust: stable
             flags: "--all-features"
-            ui_exclude: "--exclude qleany-teksilo-ui"
+            ui_exclude: "--exclude qleany"
           - name: minimal
             os: ubuntu-latest
             rust: stable
@@ -106,7 +106,7 @@ jobs:
             os: ubuntu-latest
             rust: stable
             flags: "--all-features"
-            ui_exclude: "--exclude qleany-teksilo-ui"
+            ui_exclude: "--exclude qleany"
     runs-on: ${{ matrix.os }}
     # wgpu and winit arrived with the Teksilo UI crate, and a cold first build is
     # long.
@@ -143,7 +143,7 @@ jobs:
       # compiled on Windows or macOS anywhere in the repository. `-p` with no feature
       # flag is the real arm, so this can never select `mocks`.
       - name: Build the Teksilo UI (real arm, every platform)
-        run: cargo build -p qleany-teksilo-ui --all-targets
+        run: cargo build -p qleany --all-targets
 
       - name: Test
         run: cargo test --workspace ${{ matrix.flags }} ${{ matrix.ui_exclude }}
@@ -165,24 +165,24 @@ jobs:
       matrix:
         # Every row here is `--all-features`, so every row excludes the Teksilo UI
         # crate: see the note on the test matrix. The MSRV row is not the reason for
-        # the exclude, `cargo +1.90.0 check -p qleany-teksilo-ui --all-features`
+        # the exclude, `cargo +1.90.0 check -p qleany --all-features`
         # passes; the reason is that `--all-features` would pick the mocks arm.
         include:
           - name: msrv
             rust: "1.90.0"
             target: ""
             flags: "--all-features"
-            ui_exclude: "--exclude qleany-teksilo-ui"
+            ui_exclude: "--exclude qleany"
           - name: debug
             rust: stable
             target: ""
             flags: "--all-features"
-            ui_exclude: "--exclude qleany-teksilo-ui"
+            ui_exclude: "--exclude qleany"
           - name: release
             rust: stable
             target: ""
             flags: "--all-features --release"
-            ui_exclude: "--exclude qleany-teksilo-ui"
+            ui_exclude: "--exclude qleany"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -207,7 +207,7 @@ jobs:
       - name: Check
         run: cargo check --workspace --all-targets ${{ matrix.flags }} ${{ matrix.ui_exclude }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
-  # The one place `qleany-teksilo-ui` is properly gated, since the `--all-features`
+  # The one place `qleany` is properly gated, since the `--all-features`
   # rows above exclude it. Both arms are covered, and the mocks arm is built, tested
   # AND linted: the mocks arm is real alternate logic, and clippy only lints the
   # `#[cfg]` arm it actually compiled, so the default pass says nothing about it.
@@ -239,27 +239,27 @@ jobs:
           cache-on-failure: true
 
       - name: Build (default arm)
-        run: cargo build -p qleany-teksilo-ui --all-targets
+        run: cargo build -p qleany --all-targets
 
       - name: Test (default arm)
-        run: cargo test -p qleany-teksilo-ui
+        run: cargo test -p qleany
 
       - name: Lint (default arm)
-        run: cargo clippy -p qleany-teksilo-ui --all-targets -- -D warnings -A deprecated
+        run: cargo clippy -p qleany --all-targets -- -D warnings -A deprecated
 
       - name: Documentation (default arm)
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc -p qleany-teksilo-ui --no-deps --document-private-items
+        run: cargo doc -p qleany --no-deps --document-private-items
 
       - name: Build (mocks arm)
-        run: cargo build -p qleany-teksilo-ui --all-targets --features mocks
+        run: cargo build -p qleany --all-targets --features mocks
 
       - name: Test (mocks arm)
-        run: cargo test -p qleany-teksilo-ui --features mocks
+        run: cargo test -p qleany --features mocks
 
       - name: Lint (mocks arm)
-        run: cargo clippy -p qleany-teksilo-ui --all-targets --features mocks -- -D warnings -A deprecated
+        run: cargo clippy -p qleany --all-targets --features mocks -- -D warnings -A deprecated
 
       # The `check` matrix excludes this crate from its `--all-features` rows, and
       # the MSRV row is one of them, so without this nothing on a pull request would
@@ -273,8 +273,8 @@ jobs:
 
       - name: Check at the MSRV (both arms)
         run: |
-          cargo +1.90.0 check -p qleany-teksilo-ui --all-targets
-          cargo +1.90.0 check -p qleany-teksilo-ui --all-targets --features mocks
+          cargo +1.90.0 check -p qleany --all-targets
+          cargo +1.90.0 check -p qleany --all-targets --features mocks
 
   # Asserts which files belong to the generator and which are ours. Regenerating
   # over a hand-edited file loses the edit silently, and the loss is only noticed
@@ -323,7 +323,7 @@ jobs:
       - name: Check documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --workspace --all-features --exclude qleany-teksilo-ui --no-deps --document-private-items
+        run: cargo doc --workspace --all-features --exclude qleany --no-deps --document-private-items
 
   rustfmt:
     name: Format
@@ -381,10 +381,10 @@ jobs:
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings -A deprecated
 
       - name: Lint (full)
-        run: cargo clippy --workspace --all-features --exclude qleany-teksilo-ui --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany --all-targets -- -D warnings -A deprecated
 
       - name: Lint (release)
-        run: cargo clippy --workspace --all-features --exclude qleany-teksilo-ui --release --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany --release --all-targets -- -D warnings -A deprecated
 
   coverage:
     if: false  # Disabled to avoid false negatives on CI
@@ -413,7 +413,7 @@ jobs:
         # Excluded for the same reason as the clippy job above: `--all-features`
         # selects the Teksilo UI's `mocks` arm, so a coverage run that kept it would
         # report the fabricated models' coverage as the UI's.
-        run: cargo llvm-cov --all-features --workspace --exclude qleany-teksilo-ui --lcov --no-cfg-coverage --output-path lcov.info
+        run: cargo llvm-cov --all-features --workspace --exclude qleany --lcov --no-cfg-coverage --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7

@@ -84,7 +84,7 @@ jobs:
       - name: Install the automation MCP server
         run: cargo install teksilo-automation-mcp --locked
 
-      # No build step: `fixture.app_binary()` runs `cargo build -p qleany-teksilo-ui
+      # No build step: `fixture.app_binary()` runs `cargo build -p qleany
       # --bin qleany` every time, on purpose, so a probe always drives the
       # real-backend debug binary whatever was compiled last.
       #

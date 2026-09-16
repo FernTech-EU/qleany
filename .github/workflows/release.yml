@@ -173,7 +173,7 @@ jobs:
 
           # `select(.publish != [])` drops the members that carry
           # `publish = false`, which `cargo metadata` reports as `"publish": []`.
-          # Today that is qleany-teksilo-ui. Such a crate is on no index and never
+          # Today that is qleany-slint-ui. Such a crate is on no index and never
           # will be, so `crate_published` always reports it missing and `pending`
           # is permanently one too high. That does not fail a release: a publish
           # with everything real excluded warns "nothing to publish" and exits 0.

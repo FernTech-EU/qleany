@@ -213,8 +213,8 @@ if ! $GENERATE_ONLY && ! $NO_LINTS; then
     # fabricated-data twin of every model, so a workspace-wide pass would
     # document the mock arm and say nothing about the real one. Exclude the
     # crate here and document it on its default arm just below.
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --exclude qleany-teksilo-ui --no-deps --document-private-items
-    RUSTDOCFLAGS="-D warnings" cargo doc -p qleany-teksilo-ui --no-deps --document-private-items
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --exclude qleany --no-deps --document-private-items
+    RUSTDOCFLAGS="-D warnings" cargo doc -p qleany --no-deps --document-private-items
 
     echo ""
     echo "--- Lints: typos ---"
@@ -283,11 +283,11 @@ if ! $GENERATE_ONLY; then
     # `--features mocks` with `--workspace`.
     echo ""
     echo "--- Root: mocks arm (build, test, clippy) ---"
-    cargo build -p qleany-teksilo-ui --all-targets --features mocks
-    cargo test -p qleany-teksilo-ui --features mocks
+    cargo build -p qleany --all-targets --features mocks
+    cargo test -p qleany --features mocks
     # `--no-deps` keeps the lint pass on this crate only: the rest of the
     # workspace is unaffected by the feature and was already linted above.
-    cargo clippy -p qleany-teksilo-ui --all-targets --features mocks -- -D warnings -A deprecated
+    cargo clippy -p qleany --all-targets --features mocks -- -D warnings -A deprecated
 fi
 
 # -----------------------------------------------

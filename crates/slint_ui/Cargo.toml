@@ -1,5 +1,5 @@
 [package]
-name = "qleany"
+name = "qleany-slint-ui"
 version.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -8,6 +8,7 @@ license.workspace = true
 authors.workspace = true
 documentation.workspace = true
 readme = "README.md"
+publish = false
 description.workspace = true
 keywords.workspace = true
 categories.workspace = true

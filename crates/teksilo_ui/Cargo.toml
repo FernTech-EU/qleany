@@ -1,6 +1,6 @@
 [package]
-name = "qleany-teksilo-ui"
-description = "Teksilo desktop UI for Qleany"
+name = "qleany"
+description.workspace = true
 authors.workspace = true
 documentation.workspace = true
 keywords.workspace = true
@@ -10,8 +10,7 @@ edition.workspace = true
 homepage.workspace = true
 repository.workspace = true
 license.workspace = true
-readme = "../../README.md"
-publish = false
+readme = "README.md"
 
 # The library IS the application; the binary below is a one-line `fn main` that
 # calls `run()`. A `[[bin]]`-only crate cannot be depended on, which would put

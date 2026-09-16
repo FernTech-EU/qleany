@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Every --all-features row excludes qleany-teksilo-ui. That crate's
+        # Every --all-features row excludes qleany. That crate's
         # `mocks` feature is a second, `#[cfg]`-selected implementation of every
         # single and list model, one that fabricates rows and writes nowhere, so
         # a row that turned it on would be exercising a stub instead of the UI.
@@ -33,23 +33,23 @@ jobs:
           - name: stable
             os: ubuntu-latest
             rust: stable
-            flags: "--all-features --exclude qleany-teksilo-ui"
+            flags: "--all-features --exclude qleany"
           - name: linux-beta
             os: ubuntu-latest
             rust: beta
-            flags: "--all-features --exclude qleany-teksilo-ui"
+            flags: "--all-features --exclude qleany"
           - name: windows-beta
             os: windows-latest
             rust: beta
-            flags: "--all-features --exclude qleany-teksilo-ui"
+            flags: "--all-features --exclude qleany"
           - name: mac-beta
             os: macos-latest
             rust: beta
-            flags: "--all-features --exclude qleany-teksilo-ui"
+            flags: "--all-features --exclude qleany"
           - name: nightly
             os: ubuntu-latest
             rust: nightly
-            flags: "--all-features --exclude qleany-teksilo-ui"
+            flags: "--all-features --exclude qleany"
           - name: minimal
             os: ubuntu-latest
             rust: stable
@@ -61,7 +61,7 @@ jobs:
           - name: next
             os: ubuntu-latest
             rust: stable
-            flags: "--all-features --exclude qleany-teksilo-ui"
+            flags: "--all-features --exclude qleany"
     continue-on-error: ${{ matrix.rust != 'stable' }}
     runs-on: ${{ matrix.os }}
     # wgpu and winit came in with the Teksilo UI crate, and a cold first build
@@ -97,7 +97,7 @@ jobs:
       # wgpu, winit and a proc-macro DSL, uncovered by exactly the toolchains this
       # workflow exists to warn about. `-p` with no feature flag is the real arm.
       - name: Build the Teksilo UI (real arm, every row)
-        run: cargo build -p qleany-teksilo-ui --all-targets
+        run: cargo build -p qleany --all-targets
 
       - name: Test
         run: cargo test --workspace ${{ matrix.flags }}
@@ -170,18 +170,18 @@ jobs:
       - name: Lint (minimal)
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings -A deprecated
 
-      # --all-features excludes qleany-teksilo-ui for the reason spelled out in
+      # --all-features excludes qleany for the reason spelled out in
       # the test job's matrix. `Lint (minimal)` above is --workspace, so it still
       # lints that crate's real arm; `Lint (ultra-minimal)` does not, because
       # without --workspace it resolves to default-members, which is slint_ui alone.
       - name: Lint (full)
-        run: cargo clippy --workspace --all-features --exclude qleany-teksilo-ui --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany --all-targets -- -D warnings -A deprecated
 
       - name: Lint (release)
-        run: cargo clippy --workspace --all-features --exclude qleany-teksilo-ui --release --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany --release --all-targets -- -D warnings -A deprecated
 
       # Clippy only lints the arm that is actually compiled, and no workspace
       # pass reaches the mocks arm any more. Scoped with `-p`; never combine
       # `--features mocks` with `--workspace`.
       - name: Lint (Teksilo mocks arm)
-        run: cargo clippy -p qleany-teksilo-ui --features mocks --all-targets -- -D warnings -A deprecated
+        run: cargo clippy -p qleany --features mocks --all-targets -- -D warnings -A deprecated

@@ -69,27 +69,42 @@ def members(manifest_dir):
     return {p["name"] for p in json.loads(out)["packages"]}
 
 
-def recorded(lockfile):
-    """The committed and staged copies, as (label, text) pairs.
+def patched_locally():
+    """Whether a `[patch.crates-io]` is in force in this checkout."""
+    config = REPO / ".cargo" / "config.toml"
+    try:
+        return "[patch.crates-io]" in config.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
 
-    Falls back to the file on disk when this is not a git checkout, which is what
-    a published `.crate` or a downloaded tarball looks like.
+
+def recorded(lockfile):
+    """The copies worth checking, as (label, text) pairs.
+
+    The staged copy always, because that is what a commit will record. The
+    working copy only when no local patch is in force: with one, cargo rewrites
+    it on every invocation, so failing on it would make the gate unpassable and
+    therefore ignored. CI has no patch, so CI checks the file it checked out.
+
+    HEAD is deliberately not checked. Its lockfile is correct relative to the
+    manifests of that commit, and comparing it against today's workspace members
+    reports a false violation the moment a package is renamed.
     """
     rel = lockfile.relative_to(REPO) if lockfile.is_relative_to(REPO) else lockfile
     out = []
-    for label, rev in (("committed", "HEAD"), ("staged", "")):
+    try:
+        out.append(("staged", subprocess.run(
+            ["git", "show", f":{rel.as_posix()}"],
+            cwd=REPO, capture_output=True, text=True, check=True,
+        ).stdout))
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    if not patched_locally() or not out:
         try:
-            got = subprocess.run(
-                ["git", "show", f"{rev}:{rel.as_posix()}"] if rev
-                else ["git", "show", f":{rel.as_posix()}"],
-                cwd=REPO, capture_output=True, text=True, check=True,
-            ).stdout
-        except (OSError, subprocess.CalledProcessError):
-            continue
-        out.append((label, got))
-    if not out:
-        out.append(("on disk", lockfile.read_text(encoding="utf-8", errors="replace")))
-    # The staged copy usually equals the committed one; report each state once.
+            out.append(("on disk", lockfile.read_text(encoding="utf-8", errors="replace")))
+        except OSError:
+            pass
+
     seen, unique = set(), []
     for label, text in out:
         if text in seen:
@@ -133,6 +148,8 @@ def offenders(text, lockfile):
         ).stdout
     except (OSError, subprocess.CalledProcessError):
         return None
+    # Only entries that HEAD resolved from the registry and this one does not.
+    # A member renamed since HEAD is path-resolved in both, so it does not show.
     return sorted(here - path_resolved(head))
 
 
@@ -154,13 +171,16 @@ def main(argv):
             if not found:
                 continue
             bad = True
-            print(f"{rel} ({label}): {len(found)} third-party crate(s) pinned to a local path:")
+            print(f"{rel} ({label}): {len(found)} path-resolved entry(ies) that are "
+                  "not workspace members:")
             for name in found:
                 print(f"    {name}")
             print("    This lockfile cannot resolve on any other machine.")
-            print(f"    Fix: git checkout -- {rel} && git add {rel}")
-            print("    Cause: the [patch.crates-io] in .cargo/config.toml, which")
-            print("    rewrites the lockfile on every cargo invocation.")
+            print("    Usually the [patch.crates-io] in .cargo/config.toml, which")
+            print("    rewrites the lockfile on every cargo invocation:")
+            print(f"        git checkout -- {rel} && git add {rel}")
+            print("    If a package was renamed, the lockfile is simply stale:")
+            print("        cargo metadata >/dev/null   (with the patch moved aside)")
     if bad:
         return 1
     print("Lockfiles are portable: nothing recorded in git names a local path.")
