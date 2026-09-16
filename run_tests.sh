@@ -267,9 +267,21 @@ if $RUN_RUST; then
         # The mocks arm is a second, `#[cfg]`-selected implementation of every
         # single and list model. A default build never compiles it, so without
         # this it rots silently until someone tries to preview a UI.
+        #
+        # Checking is not enough. It is real alternate logic, so it is built,
+        # tested AND linted: clippy only ever lints the `#[cfg]` arm actually
+        # compiled, so the default pass says nothing about this one. Scoped with
+        # `-p` because teksilo-ui is the only crate declaring the feature —
+        # never combine `--features mocks` with `--workspace`.
         echo ""
-        echo "--- Rust: cargo check --features mocks (Teksilo mock arm) ---"
-        cargo check -p "$(rust_pkg teksilo-ui)" --features mocks
+        echo "--- Rust: mocks arm (build, test, clippy) ---"
+        cargo build -p "$(rust_pkg teksilo-ui)" --all-targets --features mocks
+        cargo test -p "$(rust_pkg teksilo-ui)" --features mocks
+        # `--no-deps` keeps the lint pass on this crate only. Without it
+        # `-D warnings` also fails on the generated feature crates, whose use
+        # cases are `unimplemented!()` scaffolds by design -- an unreachable
+        # `uow.commit()?` after the stub is expected, not rot.
+        cargo clippy -p "$(rust_pkg teksilo-ui)" --all-targets --features mocks --no-deps -- -D warnings
 
         # Two bins with one name is an output-filename collision that fails
         # `cargo build --workspace`. `cargo check` writes hash-named metadata and
@@ -287,8 +299,15 @@ if dupes:
 print("bins: " + ", ".join(sorted(names)))
 '
 
+        # tests/rust/Cargo.toml lists every generated crate as a workspace
+        # member, teksilo_ui included, so this one step also builds and RUNS the
+        # generated headless UI test (teksilo_ui/tests/demo_headless.rs). That
+        # matters: for a long time the Teksilo scaffold was only ever
+        # compile-checked, and three defects that made the demo unusable all
+        # shipped through a green `cargo check`. No separate step -- a second
+        # `cargo test` here would be redundant.
         echo ""
-        echo "--- Rust: cargo test (functional tests) ---"
+        echo "--- Rust: cargo test (functional + generated headless UI tests) ---"
         cargo test --workspace
     fi
 

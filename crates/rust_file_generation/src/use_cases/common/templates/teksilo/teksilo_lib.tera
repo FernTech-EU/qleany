@@ -40,7 +40,7 @@ pub fn run() {
     // lists would have nothing to hang off and its Add button would refuse
     // every click. Here and not in a widget's `build`: `build` reruns on every
     // rebuild, and a bootstrap that reran would mint a fresh root each frame.
-    session.bootstrap();
+    crate::app::bootstrap(&session);
 
     TeksiloAppBuilder::new()
         // There is no `Theme::default()`; a preset must be chosen.

@@ -451,6 +451,8 @@ crates/
     │   └── models/
     │       ├── coalesced_reload.rs
     │       └── root_cars_list_model.rs  # one per list_model relationship
+    ├── tests/
+    │   └── demo_headless.rs        # drives the demo window with no display
     └── Cargo.toml
 
 ```
@@ -481,3 +483,15 @@ feature modes keeps the two arms in step, so check both in CI.
 **Wiring** — a subscription made from a widget's `build` lasts exactly one build
 cycle, so `Session::wire_all(ctx)` must be called from `build` on *every* build.
 Wiring once leaves the UI silently deaf after the first rebuild.
+
+**The headless test** (`tests/demo_headless.rs`) — drives the demo window's own
+handles with no window and no display: it bootstraps a session, adds rows
+through the list model using `app::FormState::to_create_dto` (the Add button's
+own conversion), points the single at a selection, and evaluates the very
+`selected_id.zip(&single.field()).map(..)` expression the detail panel binds.
+It exists because compiling this crate proves nothing about it *working*: three
+defects that made the demo unusable — an owner signal never seeded, a required
+reference left at id 0 so only the first Add succeeded, and a detail panel that
+read `.get()` during `build` — all shipped through a green `cargo check`. It is
+`Infrastructure`, so it is regenerated freely; replace `app.rs` with your real
+UI and this test goes with it.

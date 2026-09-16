@@ -75,34 +75,202 @@ use frontend::AppContext;
 use frontend::common::entities::{{ f.inner.enum_name }};
 {%- endif %}
 {%- endfor %}
+{#- `bootstrap` below walks `demo_ent`'s ownership chain, so it needs the command
+    module and the Create DTO of every ancestor, plus the undo/redo commands that
+    sweep the scaffolding off the stack. Deduplicated against the required-child
+    imports above: importing one item twice does not compile. -#}
+{%- set_global has_bootstrap = false %}
+{%- if demo_ent.ownership_chain | length > 0 %}{% set_global has_bootstrap = true %}{% endif %}
+{%- set_global chain_root = false %}
+{%- if has_bootstrap %}
+{%- set_global chain_root = demo_ent.ownership_chain | first %}
+use frontend::commands::undo_redo_commands;
+{%- for a in demo_ent.ownership_chain %}
+{%- if a.snake_name != demo_ent.snake_name and a.snake_name not in seen_child_targets %}
+{%- set_global seen_child_targets = seen_child_targets | concat(with=a.snake_name) %}
+use frontend::commands::{{ a.snake_name }}_commands;
+use frontend::direct_access::Create{{ a.pascal_name }}Dto;
+{%- endif %}
+{%- endfor %}
+{%- endif %}
 
 use crate::models::{{ list_ent.pascal_name }}{{ list_field.pascal_name }}Row;
 use crate::session::Session;
 
+/// The entity this window elected to demo.
+///
+/// Published so the generated headless test (`tests/demo_headless.rs`) can
+/// cross-check it against its own election. The election is template-level
+/// computation and Tera cannot share a `set_global` across files, so the test
+/// template runs its own copy; identical copies drift the moment one is edited,
+/// and a drifted test would exercise a list this window never shows -- and pass.
+pub const DEMO_ENTITY: &str = "{{ demo_ent.pascal_name }}";
+{%- if has_bootstrap %}
+
+/// Create the owner hierarchy the demo window needs, then point the lists at
+/// it. Call once, from `run()`.
+///
+/// A free function here rather than a method on `Session`: this is demo
+/// scaffolding, and `app.rs` is the `Scaffold` -- the one file you are meant to
+/// throw away. It also keeps the demo-entity election in a single template. The
+/// election picks the entity the form and the Add button drive; the hierarchy
+/// below is that entity's ownership chain. Elect twice, in two templates, and
+/// nothing stops an edit to one from seeding an owner the button never reads,
+/// which is a silent no-op button that still compiles.
+///
+/// The store starts empty. Nothing in the generated UI creates an owner, so
+/// without this walk every `*_owner` signal stays `None`, every list model
+/// refuses to create under a missing owner, and the demo's
+/// "Add {{ demo_ent.pascal_name }}" button is a silent no-op.
+///
+/// **Never from a widget's `build`**: `build` reruns on every rebuild, and a
+/// bootstrap that reran would mint a fresh `{{ chain_root.pascal_name }}` tree
+/// each time. The early return below is a second line of defence, not a
+/// licence to move the call.
+///
+/// The walk is `demo_ent`'s ownership chain, root first:
+/// {% for a in demo_ent.ownership_chain %}`{{ a.pascal_name }}`{% if not loop.last %} -> {% endif %}{% endfor %} -> `{{ demo_ent.pascal_name }}` (yours to add).
+pub fn bootstrap(session: &Session) {
+    // Scaffolding, not user work: a second call would mint a second
+    // `{{ chain_root.pascal_name }}` and orphan everything already on screen.
+    if session.{{ list_ent.snake_name }}_{{ list_field.snake_name }}_owner.get().is_some() {
+        log::debug!("bootstrap: already done, skipping");
+        return;
+    }
+
+    let now = chrono::Utc::now();
+    {%- set_global prev_snake = "" %}
+    {%- set_global prev_pascal = "" %}
+    {%- for a in demo_ent.ownership_chain %}
+
+    {%- if loop.first %}
+    let {{ a.snake_name }}_id = match {{ a.snake_name }}_commands::create_orphan_{{ a.snake_name }}(
+        &session.app_ctx,
+        {%- if a.undoable %}
+        session.stack_id,
+        {%- endif %}
+        // `..Default::default()` covers whatever else this entity carries;
+        // the two timestamps are mandatory on every entity and are the one
+        // pair a `Default` would leave at the epoch.
+        &Create{{ a.pascal_name }}Dto {
+            created_at: now,
+            updated_at: now,
+            ..Default::default()
+        },
+    ) {
+        Ok(dto) => dto.id,
+        Err(e) => {
+            log::error!("bootstrap: could not create the top-level {{ a.pascal_name }}: {e}");
+            return;
+        }
+    };
+    {%- else %}
+    let {{ a.snake_name }}_id = match {{ a.snake_name }}_commands::create_{{ a.snake_name }}(
+        &session.app_ctx,
+        {%- if a.undoable %}
+        session.stack_id,
+        {%- endif %}
+        &Create{{ a.pascal_name }}Dto {
+            created_at: now,
+            updated_at: now,
+            ..Default::default()
+        },
+        {{ prev_snake }}_id,
+        0,
+    ) {
+        Ok(dto) => dto.id,
+        Err(e) => {
+            log::error!(
+                "bootstrap: could not create a {{ a.pascal_name }} under {{ prev_pascal }} \
+                 #{% raw %}{{% endraw %}{{ prev_snake }}_id}: {e}"
+            );
+            return;
+        }
+    };
+    {%- endif %}
+    log::info!("bootstrap: created {{ a.pascal_name }} #{% raw %}{{% endraw %}{{ a.snake_name }}_id}");
+    {%- set_global prev_snake = a.snake_name %}
+    {%- set_global prev_pascal = a.pascal_name %}
+    {%- endfor %}
+
+    // Point every list whose owner the walk just created at that owner. A
+    // list owned by something the walk does NOT create stays `None` on
+    // purpose -- it is waiting for a selection, not broken.
+    {%- for eid, ent in s.entities %}
+    {%- if not ent.inner.only_for_heritage %}
+    {%- for f in ent.fields %}
+    {%- if f.inner.list_model and f.inner.entity %}
+    {%- set_global owner_in_chain = false %}
+    {%- for a in demo_ent.ownership_chain %}
+    {%- if a.snake_name == ent.snake_name %}{% set_global owner_in_chain = true %}{% endif %}
+    {%- endfor %}
+    {%- if owner_in_chain %}
+    session.{{ ent.snake_name }}_{{ f.snake_name }}_owner.set(Some({{ ent.snake_name }}_id));
+    {%- else %}
+    // `{{ ent.snake_name }}_{{ f.snake_name }}` hangs off a `{{ ent.pascal_name }}`, which this walk
+    // does not create: seed it when one is selected or created.
+    {%- endif %}
+    {%- endif %}
+    {%- endfor %}
+    {%- endif %}
+    {%- endfor %}
+
+    // The hierarchy above is scenery, not something the user did. Leaving it
+    // on the stack would open the app with Undo enabled and one click away
+    // from deleting the {{ list_ent.pascal_name }} the list hangs off.
+    // `UndoRedoBinder::wire` re-reads the manager on the first build, so this
+    // is visible before anything is drawn.
+    undo_redo_commands::clear_all_stacks(&session.app_ctx);
+}
+{%- else %}
+
+/// Nothing to bootstrap.
+///
+/// `{{ demo_ent.pascal_name }}` has no owner above it, so there is no hierarchy
+/// to build and no list-model owner to seed. Kept as a no-op so `run()` reads
+/// the same for every manifest.
+pub fn bootstrap(_session: &Session) {}
+{%- endif %}
+
 /// Two-way form state: one signal per editable scalar of `{{ demo_ent.pascal_name }}`.
+///
+/// `pub`, with `pub` fields, so the generated headless test
+/// (`tests/demo_headless.rs`) can fill the form and call [`FormState::to_create_dto`]
+/// rather than reimplement it. A copy of this conversion in the test would keep
+/// passing while the real one regressed -- which is exactly how a required
+/// reference left at id 0 reached a user's second click.
 #[derive(Clone)]
-struct FormState {
+pub struct FormState {
     {%- for f in demo_ent.normal_fields %}
     {%- if not f.is_list and not f.optional and f.snake_name != "created_at" and f.snake_name != "updated_at" and f.inner.field_type != "Entity" %}
     {%- if f.inner.field_type == "Boolean" %}
-    {{ f.snake_name }}: Signal<bool>,
+    pub {{ f.snake_name }}: Signal<bool>,
     {%- elif f.inner.field_type == "Integer" %}
-    {{ f.snake_name }}: Signal<i64>,
+    pub {{ f.snake_name }}: Signal<i64>,
     {%- elif f.inner.field_type == "UInteger" %}
-    {{ f.snake_name }}: Signal<u64>,
+    pub {{ f.snake_name }}: Signal<u64>,
     {%- elif f.inner.field_type == "Float" %}
-    {{ f.snake_name }}: Signal<f64>,
+    pub {{ f.snake_name }}: Signal<f64>,
     {%- elif f.inner.field_type == "Enum" %}
-    {{ f.snake_name }}: Signal<Option<String>>,
+    pub {{ f.snake_name }}: Signal<Option<String>>,
     {%- else %}
-    {{ f.snake_name }}: Signal<String>,
+    pub {{ f.snake_name }}: Signal<String>,
     {%- endif %}
     {%- endif %}
     {%- endfor %}
 }
 
+/// `new()` is public so the generated headless test can drive the window's own
+/// form rather than a copy of it, and a public argument-less `new` without a
+/// `Default` is `clippy::new_without_default`.
+impl Default for FormState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FormState {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             {%- for f in demo_ent.normal_fields %}
             {%- if not f.is_list and not f.optional and f.snake_name != "created_at" and f.snake_name != "updated_at" and f.inner.field_type != "Entity" %}
@@ -124,7 +292,7 @@ impl FormState {
     /// id 0, which is not a real row, so each one is minted first. `None` means
     /// a child could not be created and there is nothing valid to submit.
 {%- endif %}
-    fn to_create_dto(
+    pub fn to_create_dto(
         &self,
 {%- if required_children | length > 0 %}
         app_ctx: &Rc<AppContext>,
@@ -347,8 +515,8 @@ impl Widget for AppRoot {
                         // Keep the form filled -- the user's typing is the only
                         // copy of it -- but never fail silently. The model logs
                         // a backend error itself; the case it cannot see is an
-                        // unset owner, which means `Session::bootstrap` did not
-                        // run or gave up.
+                        // unset owner, which means `bootstrap` did not run or
+                        // gave up.
                         None => log::error!(
                             "Add {{ demo_ent.pascal_name }}: nothing was created. Either the \
                              backend refused it (logged just above) or \
@@ -538,6 +706,20 @@ use teksilo::prelude::*;
 use teksilo::widgets::{Padding, Panel, TextWidget};
 
 use crate::session::Session;
+
+/// No entity was elected, so there is nothing to demo.
+///
+/// Published for the same reason as its non-empty twin: the generated headless
+/// test elects independently, and comparing the two names turns a silent
+/// divergence into a failing test.
+pub const DEMO_ENTITY: &str = "";
+
+/// Nothing to bootstrap.
+///
+/// No relationship in this manifest elects a demo entity, so there is no owner
+/// hierarchy to build and no list-model owner to seed. Kept as a no-op so
+/// `run()` reads the same for every manifest.
+pub fn bootstrap(_session: &Session) {}
 
 pub struct AppRoot {
     _session: Session,

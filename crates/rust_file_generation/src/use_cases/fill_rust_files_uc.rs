@@ -868,6 +868,20 @@ impl FillRustFilesUseCase {
             )
             .all_entities = true;
 
+            // The headless regression test for the demo window. It runs its own
+            // copy of app.rs's demo-entity election (Tera cannot share a
+            // `set_global` across files), so it needs every entity -- and it is
+            // plumbing, regenerated freely, not something a user edits: the demo
+            // it drives lives in app.rs, which is the Scaffold.
+            b.add(
+                "demo_headless.rs",
+                format!("{}/teksilo_ui/tests/", prefix),
+                "teksilo",
+                "teksilo_tests",
+                FileNature::Infrastructure,
+            )
+            .all_entities = true;
+
             let relative_path_singles = format!("{}/teksilo_ui/src/singles/", prefix);
             let relative_path_models = format!("{}/teksilo_ui/src/models/", prefix);
 
