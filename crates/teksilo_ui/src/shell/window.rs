@@ -28,7 +28,12 @@ use crate::shell::undo_buttons::UndoButtons;
 /// and there `title_bar_host()` is `None`. Mounting a `TitleBar` unconditionally
 /// would draw a second bar under the real one, so the `None` arm puts the same
 /// controls in an ordinary strip and lets the OS draw the frame.
-pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> WidgetId {
+pub fn build_root(
+    tree: &mut WidgetTree,
+    session: Session,
+    ids: AppIds,
+    unsaved: Signal<bool>,
+) -> WidgetId {
     let manifest = ManifestViewModel::new(session.app_ctx.clone(), ids.clone());
     // Validation is shell state, not a screen: the badge is in the title bar and
     // the navigation rail reads its verdict to decide whether Generate is reachable.
@@ -62,7 +67,15 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
     let badge = CheckBadge::new(check.clone());
     let undo_buttons = UndoButtons::new(undo.can_undo(), undo.can_redo());
 
-    let body = App::new(session, ids, parts.clone(), manifest.clone(), check, undo);
+    let body = App::new(
+        session,
+        ids,
+        parts.clone(),
+        manifest.clone(),
+        check,
+        undo,
+        unsaved,
+    );
 
     match tree.title_bar_host() {
         Some(host) => {

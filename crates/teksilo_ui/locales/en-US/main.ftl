@@ -380,6 +380,20 @@ wizard-template-data-management-blurb = Records, lists and forms over a store.
 wizard-targets-footnote = You can change these later on the User Interface screen.
 wizard-targets-cpp-note = The Qt targets need a Qt 6 installation and a git tag to build against.
 
+## Destructive deletes
+
+confirm-delete-entity-title = Delete this entity?
+confirm-delete-entity = { $name } goes, with its fields and its relationships.
+confirm-delete-feature-title = Delete this feature?
+confirm-delete-feature = { $name } goes, with its use cases and their DTOs.
+confirm-delete-use-case-title = Delete this use case?
+confirm-delete-use-case = { $name } goes, with its input and output DTOs.
+
+## Quitting with unsaved work
+
+quit-unsaved-title = Save before quitting?
+quit-unsaved-message = This manifest has changes that are not on disk yet.
+
 ## Shared
 
 common-cancel = Cancel

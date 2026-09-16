@@ -9,6 +9,9 @@
 use teksilo::core::BindingLevel;
 use teksilo::prelude::*;
 
+use teksilo::widgets::{MessageBox, MessageBoxButtons, StandardButton};
+
+use crate::about;
 use crate::app_ids::{AppIds, Screen};
 use crate::edit::UndoViewModel;
 use crate::entities::EntitiesViewModel;
@@ -36,6 +39,42 @@ pub fn register(ctx: &mut BuildContext, deps: &CommandDeps) {
     register_manifest(ctx, deps);
     register_entities(ctx, deps);
     register_undo(ctx, deps);
+    register_help(ctx, deps);
+}
+
+/// Help, About, and the guard that stands between unsaved work and Quit.
+fn register_help(ctx: &mut BuildContext, deps: &CommandDeps) {
+    ctx.register_action_global(Action::new(name::ABOUT).on_invoke(|_i, c| about::present(c)));
+
+    // US-SAFE: quitting with unsaved work asks first.
+    //
+    // The window's close guard vetoes and fires this same intent, so the menu row,
+    // Ctrl+Q and the window's own close button are one path rather than three, and
+    // the button most users press is the one that would otherwise be unguarded.
+    // `close_window_forced` is the second half of that: it bypasses the guard that
+    // opened this dialog rather than re-triggering it.
+    let vm = deps.manifest.clone();
+    ctx.register_action_global(Action::new(name::QUIT).on_invoke(move |_i, c| {
+        if !vm.can_save().get() {
+            c.close_window_forced();
+            return;
+        }
+        let vm = vm.clone();
+        MessageBox::question(tr!(quit_unsaved_title()))
+            .text(tr!(quit_unsaved_message()))
+            // The preset teksilo makes Cancel the escape and No-equivalent: the
+            // safe answer is the one Escape takes.
+            .buttons(MessageBoxButtons::SaveDiscardCancel)
+            .on_result(move |result, ctx| match result.button {
+                StandardButton::Save => {
+                    vm.save();
+                    ctx.close_window_forced();
+                }
+                StandardButton::Discard => ctx.close_window_forced(),
+                _ => {}
+            })
+            .present(c);
+    }));
 }
 
 /// Undo and redo, on the active screen's stack.

@@ -386,6 +386,14 @@ def main():
             if entry is not None:
                 session.click(entry)
                 session.call("settle", SETTLE)
+                # US-SAFE-01: an entity takes its fields and relationships with it,
+                # so it asks first. The question is the safety probe's subject; here
+                # it is answered so the delete can be checked.
+                confirm = session.find("Yes", timeout=3)
+                checks.check(confirm is not None, "US-SAFE-01 the delete asks first")
+                if confirm is not None:
+                    session.click(confirm)
+                    session.call("settle", SETTLE)
                 after_count = len(rows(session))
                 checks.check(
                     after_count < before,

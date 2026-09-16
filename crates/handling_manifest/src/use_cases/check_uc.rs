@@ -1103,8 +1103,22 @@ impl CheckUseCase {
             let mut strong_parents: HashMap<EntityId, HashMap<&str, Vec<&str>>> = HashMap::new();
 
             for rel in &relationships {
-                let left_entity_id = &rel.left_entity.expect("Relationship missing left_entity");
-                let right_entity_id = &rel.right_entity.expect("Relationship missing right_entity");
+                // Reported, not unwrapped. A relationship whose side is unset is
+                // exactly what deleting a referenced entity leaves behind, and the
+                // check is the one thing that has to survive a broken manifest: it
+                // is what tells the user the manifest is broken. The two arms below
+                // were already written to report a side that names a missing entity;
+                // panicking above them made that unreachable for the `None` case,
+                // and took the application down instead.
+                let (Some(left_entity_id), Some(right_entity_id)) =
+                    (rel.left_entity.as_ref(), rel.right_entity.as_ref())
+                else {
+                    critical_errors.push(format!(
+                        "Relationship '{}': both sides must name an entity",
+                        rel.field_name
+                    ));
+                    continue;
+                };
 
                 if !entity_by_id.contains_key(left_entity_id) {
                     critical_errors.push(format!(
@@ -1174,12 +1188,18 @@ impl CheckUseCase {
                     if rel.field_name == "inherits_from" {
                         continue;
                     }
-                    if let Some(target) = entity_by_id
-                        .get(&rel.right_entity.expect("Relationship missing right_entity"))
+                    // A relationship with an unset side has already been reported
+                    // above. Skipping it here rather than unwrapping is what keeps
+                    // the check running to the end on a manifest that is broken,
+                    // which is the manifest the check exists for.
+                    let (Some(left_entity_id), Some(right_entity_id)) =
+                        (rel.left_entity.as_ref(), rel.right_entity.as_ref())
+                    else {
+                        continue;
+                    };
+                    if let Some(target) = entity_by_id.get(right_entity_id)
                         && target.only_for_heritage
                     {
-                        let left_entity_id =
-                            &rel.left_entity.expect("Relationship missing left_entity");
                         let source_name = entity_by_id
                             .get(left_entity_id)
                             .map(|e| e.name.as_str())
@@ -1198,10 +1218,13 @@ impl CheckUseCase {
             let mut strong_children: HashMap<EntityId, Vec<EntityId>> = HashMap::new();
             for rel in &relationships {
                 if rel.strength == Strength::Strong && rel.direction == Direction::Forward {
-                    let left_entity_id =
-                        &rel.left_entity.expect("Relationship missing left_entity");
-                    let right_entity_id =
-                        &rel.right_entity.expect("Relationship missing right_entity");
+                    // Same as above: already reported, so skipped rather than
+                    // unwrapped. A dangling side is not a cycle.
+                    let (Some(left_entity_id), Some(right_entity_id)) =
+                        (rel.left_entity.as_ref(), rel.right_entity.as_ref())
+                    else {
+                        continue;
+                    };
                     strong_children
                         .entry(*left_entity_id)
                         .or_default()

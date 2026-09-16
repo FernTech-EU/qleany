@@ -30,6 +30,9 @@ pub struct App {
     manifest: ManifestViewModel,
     check: CheckViewModel,
     undo: UndoViewModel,
+    /// Read by the window's close guard, which is built before this view-model
+    /// exists and cannot reach it. One signal, written here and read there.
+    unsaved: Signal<bool>,
     // The screens' view-models are built once and kept, never built inside `build`.
     // A rebuild would otherwise hand each screen a fresh set of signals, and
     // anything held in one, a selection, a pending edit, a bridged combo value,
@@ -56,6 +59,7 @@ impl App {
         manifest: ManifestViewModel,
         check: CheckViewModel,
         undo: UndoViewModel,
+        unsaved: Signal<bool>,
     ) -> Self {
         let project = ProjectViewModel::new(
             session.app_ctx.clone(),
@@ -132,6 +136,7 @@ impl App {
             manifest,
             check,
             undo,
+            unsaved,
             home: HomeViewModel::new(),
             project,
             entities,
@@ -212,6 +217,14 @@ impl Widget for App {
         self.manifest.wire(ctx);
         self.check.wire(ctx);
         self.undo.wire(ctx);
+
+        // Keep the close guard's answer current.
+        let unsaved = self.unsaved.clone();
+        let can_save = self.manifest.can_save();
+        ctx.effect(&can_save, move |dirty| {
+            unsaved.set_if_changed(*dirty);
+        });
+        self.unsaved.set_if_changed(can_save.get());
         commands::register(
             ctx,
             &CommandDeps {

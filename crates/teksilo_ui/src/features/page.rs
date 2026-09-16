@@ -8,6 +8,7 @@ use teksilo::widgets::{
     VStack,
 };
 
+use crate::about::confirm::{Cascade, confirm_delete};
 use crate::features::dto_pane::dto_pane;
 use crate::features::use_case_form::use_case_form;
 use crate::features::{DtoViewModel, FeaturesViewModel, UseCaseViewModel};
@@ -151,12 +152,20 @@ fn feature_column(vm: &FeaturesViewModel) -> impl Widget {
     let delegate_vm = vm.clone();
     let list = ListView::from_source_keyed(source, vm.selection(), move |_i, row, selected| {
         let id = row.id;
+        let name = row.name.clone();
         let vm = delegate_vm.clone();
         Box::new(
             StandardListItem::new(lit!(row.name.clone()))
                 .selected(selected)
                 .label_overflow(TextOverflow::Ellipsis(EllipsisMode::Trailing))
-                .trailing_slot(row_menu(tr!(features_delete()), move |_c| vm.remove(id))),
+                .trailing_slot(row_menu(tr!(features_delete()), {
+                    let name = name.clone();
+                    move |ctx| {
+                        // US-SAFE-01: a feature takes its use cases and their DTOs.
+                        let vm = vm.clone();
+                        confirm_delete(ctx, Cascade::Feature, &name, move || vm.remove(id));
+                    }
+                })),
         )
     })
     .reorderable(true)
@@ -203,10 +212,18 @@ fn use_case_column(vm: &UseCaseViewModel, features: &FeaturesViewModel) -> impl 
     let list = ListView::from_source_keyed(source, vm.selection(), move |_i, row, selected| {
         let id = row.id;
         let vm = delegate_vm.clone();
+        let name = row.name.clone();
         let mut item = StandardListItem::new(lit!(row.name.clone()))
             .selected(selected)
             .label_overflow(TextOverflow::Ellipsis(EllipsisMode::Trailing))
-            .trailing_slot(row_menu(tr!(use_cases_delete()), move |_c| vm.remove(id)));
+            .trailing_slot(row_menu(tr!(use_cases_delete()), {
+                let name = name.clone();
+                move |ctx| {
+                    // US-SAFE-01: a use case takes its DTOs.
+                    let vm = vm.clone();
+                    confirm_delete(ctx, Cascade::UseCase, &name, move || vm.remove(id));
+                }
+            }));
         if let Some(subtitle) = delegate_vm.subtitle(row) {
             item = item
                 .subtitle(subtitle)

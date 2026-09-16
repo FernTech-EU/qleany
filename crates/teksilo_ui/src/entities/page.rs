@@ -7,6 +7,7 @@ use teksilo::widgets::{
     Padding, ScrollArea, StandardListItem, TextWidget, VStack,
 };
 
+use crate::about::confirm::{Cascade, confirm_delete};
 use crate::entities::entity_form::entity_form;
 use crate::entities::field_form::field_form;
 use crate::entities::field_vm::field_subtitle;
@@ -164,8 +165,14 @@ fn entity_column(vm: &EntitiesViewModel) -> impl Widget {
             .label_overflow(TextOverflow::Ellipsis(EllipsisMode::Trailing))
             .trailing_slot(row_menu_button(move || {
                 let vm = vm.clone();
+                let name = name_of(&vm, id);
                 Box::new(MenuList::new().item(
-                    MenuItem::new(tr!(entities_delete())).on_activate_fn(move |_c| vm.remove(id)),
+                    MenuItem::new(tr!(entities_delete())).on_activate_fn(move |ctx| {
+                        // US-SAFE-01: an entity takes its fields and relationships
+                        // with it, and the row does not say how many.
+                        let vm = vm.clone();
+                        confirm_delete(ctx, Cascade::Entity, &name, move || vm.remove(id));
+                    }),
                 )) as Box<dyn Widget>
             }));
         if let Some(subtitle) = delegate_vm.subtitle(row) {
@@ -319,6 +326,16 @@ fn field_column(entities: &EntitiesViewModel, fields: &FieldViewModel) -> Option
             child: column
         }
     ))
+}
+
+/// An entity's own name, for a confirmation that has to say it.
+fn name_of(vm: &EntitiesViewModel, id: frontend::EntityId) -> String {
+    vm.list()
+        .rows()
+        .into_iter()
+        .find(|row| row.id == id)
+        .map(|row| row.name)
+        .unwrap_or_default()
 }
 
 /// A list pane's title bar: a name and a plus.

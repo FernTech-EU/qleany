@@ -23,6 +23,7 @@ pub mod singles;
 pub mod undo_redo;
 
 // Hand-written.
+pub mod about;
 pub mod app;
 pub mod app_ids;
 pub mod bootstrap;
@@ -45,6 +46,7 @@ pub mod user_interface;
 
 use std::rc::Rc;
 
+use teksilo::core::window::CloseResponse;
 use teksilo::prelude::*;
 
 use frontend::commands::handling_app_lifecycle_commands;
@@ -114,6 +116,10 @@ pub fn run() {
 
     let root_session = session.clone();
     let root_ids = ids.clone();
+    // Whether there is work that is not on disk. Written by `App`, read by the
+    // window's close guard below, which is built before any view-model exists.
+    let unsaved: Signal<bool> = Signal::new(false);
+    let guard_unsaved = unsaved.clone();
 
     TeksiloAppBuilder::new()
         .application("eu", "ferntech", "Qleany")
@@ -136,8 +142,24 @@ pub fn run() {
                 .size(1280, 820)
                 .min_size(960, 640)
                 .decorations(DecorationsMode::CustomChrome)
+                // The window's own close button goes through the same question the
+                // Quit menu row asks. The guard vetoes and fires the intent; the
+                // action's answer calls `close_window_forced`, which bypasses this
+                // rather than re-triggering it.
+                .on_close_requested(move |ctx| {
+                    if !guard_unsaved.get() {
+                        return CloseResponse::Close;
+                    }
+                    ctx.send_intent(crate::intents::AppIntent::Quit.into_intent());
+                    CloseResponse::Veto
+                })
                 .root(move |tree, _state| {
-                    crate::shell::window::build_root(tree, root_session.clone(), root_ids.clone())
+                    crate::shell::window::build_root(
+                        tree,
+                        root_session.clone(),
+                        root_ids.clone(),
+                        unsaved.clone(),
+                    )
                 }),
         )
         .run();
