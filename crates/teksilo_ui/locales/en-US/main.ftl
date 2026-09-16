@@ -378,10 +378,20 @@ confirm-delete-feature = { $name } goes, with its use cases and their DTOs.
 confirm-delete-use-case-title = Delete this use case?
 confirm-delete-use-case = { $name } goes, with its input and output DTOs.
 
-## Quitting with unsaved work
+## Discarding unsaved work
+
+# Every path that replaces or closes the open manifest asks the same question in
+# its own words, because "are you sure?" over an action the user can no longer
+# see is a question they learn to dismiss without reading.
 
 quit-unsaved-title = Save before quitting?
 quit-unsaved-message = This manifest has changes that are not on disk yet.
+new-manifest-unsaved-title = Save before starting a new manifest?
+new-manifest-unsaved-message = Creating one closes this manifest, which has changes that are not on disk yet.
+open-manifest-unsaved-title = Save before opening another manifest?
+open-manifest-unsaved-message = Opening one closes this manifest, which has changes that are not on disk yet.
+close-manifest-unsaved-title = Save before closing?
+close-manifest-unsaved-message = This manifest has changes that are not on disk yet.
 
 ## Demo generator
 

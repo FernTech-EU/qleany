@@ -12,7 +12,7 @@
 #   ./run_tests.sh --no-cleanup      Keep build directories after the run.
 #   ./run_tests.sh --deep-clean      Also drop tests/rust/target (cold rebuild next run).
 #   ./run_tests.sh --no-lints        Skip the lint gate (fmt, teksilo-fmt, clippy,
-#                                    rustdoc, typos, mdbook, generated territory).
+#                                    rustdoc, typos, mdbook, lockfile, generated territory).
 #   ./run_tests.sh --install-deps    Install Ubuntu packages first (Qt6, QCoro, Rust).
 #
 # Options can be combined, for example:
@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-cleanup     Keep generated temp/ directories after the run"
             echo "  --deep-clean     Also remove tests/rust/target (forces a cold rebuild)"
             echo "  --no-lints       Skip the lint gate (fmt, teksilo-fmt, clippy, rustdoc,"
-            echo "                   typos, mdbook, generated territory)"
+            echo "                   typos, mdbook, lockfile, generated territory)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "When neither --rust nor --cpp-qt is given, both examples are processed."
@@ -242,6 +242,13 @@ if ! $GENERATE_ONLY && ! $NO_LINTS; then
         echo "⚠ mdbook is not installed — the documentation build is NOT covered locally."
         echo "⚠ Install: cargo install mdbook"
     fi
+
+    echo ""
+    echo "--- Lints: lockfile portability ---"
+    # Runs LAST of the lint gate, after everything above has invoked cargo: the
+    # gitignored [patch.crates-io] rewrites Cargo.lock on every invocation, so
+    # checking earlier would check a file that the next command breaks again.
+    python3 tools/check_lockfile_is_portable.py
 
     echo ""
     echo "--- Lints: generated territory ---"
@@ -423,27 +430,6 @@ if $RUN_CPPQT; then
     fi
 
     cd "$REPO_ROOT"
-fi
-
-# -----------------------------------------------
-# 3b. The example lockfile, which a local teksilo patch quietly rewrites
-# -----------------------------------------------
-# `tests/rust` is its own workspace, but cargo walks ancestor directories for
-# `.cargo/config.toml`, so the gitignored `[patch.crates-io] teksilo = { path =
-# ... }` used for local co-development applies there too. Building the example
-# then strips `source` and `checksum` from every teksilo entry in a lockfile that
-# IS tracked. Committed, that lockfile is unresolvable anywhere without the same
-# sibling checkout, which means everywhere except this machine.
-#
-# Warn rather than restore: the diff may also be a real dependency bump, and
-# eating someone's change to shield them from this one is the worse trade.
-if $RUN_RUST && [ -f .cargo/config.toml ] && ! git diff --quiet -- tests/rust/Cargo.lock 2>/dev/null; then
-    if git diff -- tests/rust/Cargo.lock | grep -q '^-source = "registry'; then
-        echo ""
-        echo "⚠ tests/rust/Cargo.lock lost its registry sources to the local"
-        echo "⚠ [patch.crates-io] in .cargo/config.toml. Do NOT commit it."
-        echo "⚠ Restore with: git checkout -- tests/rust/Cargo.lock"
-    fi
 fi
 
 # -----------------------------------------------

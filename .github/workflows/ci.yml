@@ -291,6 +291,12 @@ jobs:
       - name: Check generated territory
         run: python3 tools/check_generated_territory.py
 
+      # A lockfile that names a directory on one machine fails `--locked`
+      # everywhere else, and without `--locked` it silently resolves to a
+      # different version of the crate, which is the worse of the two.
+      - name: Check the lockfiles are portable
+        run: python3 tools/check_lockfile_is_portable.py
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest

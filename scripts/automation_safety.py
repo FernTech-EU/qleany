@@ -3,8 +3,9 @@
 
 Covers US-ABOUT-01 (Help, About shows what this build is and closes on Escape),
 US-SAFE-01 (a delete that cascades asks first, one that does not deletes at once)
-and US-SAFE-02 (a confirmation names the object by its own name and says what
-goes with it).
+US-SAFE-02 (a confirmation names the object by its own name and says what goes
+with it) and US-SAFE-03 (every path that replaces or closes the open manifest
+asks before discarding unsaved work).
 
 The quit guard is not driven here: answering it closes the window, which ends the
 session the probe is driving. Its two halves are covered instead by the shell
@@ -19,10 +20,53 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
 
-STORIES = ("US-ABOUT-01", "US-SAFE-01", "US-SAFE-02")
+STORIES = ("US-ABOUT-01", "US-SAFE-01", "US-SAFE-02", "US-SAFE-03")
 PROBE = "safety"
 SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
 SETTLE = {"settle": {"settle_timeout_ms": 3000}}
+
+
+def unsaved(session):
+    """Whether the title bar says there is work that is not on disk."""
+    return "No unsaved changes" not in [n.get("label") for n in session.nodes()]
+
+
+def go_home(session):
+    session.click(session.find("Home", timeout=10))
+    session.call("settle", SETTLE)
+
+
+def close_discarding(session):
+    """Close whatever is open, answering the guard if it asks."""
+    go_home(session)
+    close = button(session, "Close current manifest")
+    if close is None or close.get("disabled", False):
+        return
+    session.click(close)
+    session.call("settle", SETTLE)
+    discard = session.find("Discard", timeout=3)
+    if discard is not None:
+        session.click(discard)
+        session.call("settle", SETTLE)
+
+
+def dirty_the_manifest(session):
+    """Open Qleany's own manifest and change one field, committed with Enter.
+
+    The Project form commits on Enter or blur rather than per keystroke, so a
+    `set_value` alone leaves the store untouched and the manifest clean.
+    """
+    close_discarding(session)
+    session.click(session.find("Open Qleany manifest", timeout=10))
+    session.call("settle", SETTLE)
+    session.click(session.find("Project", timeout=10))
+    session.call("settle", SETTLE)
+    field = session.find("Application name", timeout=10, role="TextInput")
+    session.call("set_value", {"node": field["id"], "value": "DirtiedByProbe"})
+    session.call("focus_node", {"node": field["id"]})
+    session.call("inject_key", {"key": "Enter"})
+    session.call("settle", SETTLE)
+    go_home(session)
 
 
 def texts(session):
@@ -248,6 +292,36 @@ def main():
             not button(session, "Undo").get("disabled", False),
             "US-SAFE-01 with Undo covering it",
         )
+
+        # US-SAFE-03: New, Open and Close each replace or discard the open
+        # manifest. The Slint UI asked before all three; this one asked before
+        # none of them until these checks were written.
+        for action, question in [
+            ("New manifest", "Save before starting a new manifest?"),
+            ("Open manifest", "Save before opening another manifest?"),
+            ("Close current manifest", "Save before closing?"),
+        ]:
+            dirty_the_manifest(session)
+            checks.check(unsaved(session), f"{action}: there is unsaved work first")
+
+            session.click(button(session, action))
+            session.call("settle", SETTLE)
+            checks.check(
+                any(question in t for t in texts(session)),
+                f"US-SAFE-03 {action} asks {question!r}",
+            )
+            cancel = session.find("Cancel", timeout=3)
+            checks.check(cancel is not None, f"US-SAFE-03 {action} can be cancelled")
+            if cancel is not None:
+                session.click(cancel)
+                session.call("settle", SETTLE)
+            checks.check(
+                unsaved(session),
+                f"US-SAFE-03 cancelling {action} keeps the unsaved work",
+            )
+
+            # Discard, so the next round starts from a clean manifest.
+            close_discarding(session)
     finally:
         if session:
             session.close()

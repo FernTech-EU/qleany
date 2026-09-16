@@ -141,17 +141,35 @@ fn register_manifest(ctx: &mut BuildContext, deps: &CommandDeps) {
     let open = deps.parts.manifest_open.clone();
     let can_save = deps.parts.can_save.clone();
 
+    // US-SAFE: every path that replaces or discards the open manifest asks first,
+    // not just Quit. The Slint UI guarded New, Open and Close from its Home screen
+    // and this one did not, which made three of its own commands quietly
+    // destructive. The question is the same one, so it comes from the same place.
     let wizard = deps.new_manifest.clone();
     let wizard_manifest = deps.manifest.clone();
-    ctx.register_action_global(
-        Action::new(name::NEW_MANIFEST)
-            .on_invoke(move |_i, c| new_manifest::present(&wizard, &wizard_manifest, c)),
-    );
+    ctx.register_action_global(Action::new(name::NEW_MANIFEST).on_invoke(move |_i, c| {
+        let wizard = wizard.clone();
+        let wizard_manifest = wizard_manifest.clone();
+        with_unsaved_settled(
+            &wizard_manifest.clone(),
+            c,
+            tr!(new_manifest_unsaved_title()),
+            tr!(new_manifest_unsaved_message()),
+            move |ctx| new_manifest::present(&wizard, &wizard_manifest, ctx),
+        );
+    }));
 
     let vm = deps.manifest.clone();
-    ctx.register_action_global(
-        Action::new(name::OPEN_MANIFEST).on_invoke(move |_i, c| vm.pick_open(c)),
-    );
+    ctx.register_action_global(Action::new(name::OPEN_MANIFEST).on_invoke(move |_i, c| {
+        let vm = vm.clone();
+        with_unsaved_settled(
+            &vm.clone(),
+            c,
+            tr!(open_manifest_unsaved_title()),
+            tr!(open_manifest_unsaved_message()),
+            move |ctx| vm.pick_open(ctx),
+        );
+    }));
 
     let vm = deps.manifest.clone();
     ctx.register_action_global(
@@ -171,15 +189,33 @@ fn register_manifest(ctx: &mut BuildContext, deps: &CommandDeps) {
     ctx.register_action_global(
         Action::new(name::CLOSE_MANIFEST)
             .enabled_when(open.clone())
-            .on_invoke(move |_i, _c| vm.close()),
+            .on_invoke(move |_i, c| {
+                let vm = vm.clone();
+                with_unsaved_settled(
+                    &vm.clone(),
+                    c,
+                    tr!(close_manifest_unsaved_title()),
+                    tr!(close_manifest_unsaved_message()),
+                    move |_ctx| vm.close(),
+                );
+            }),
     );
 
     // The developer affordance loads the manifest in the working directory, which
-    // for anyone running from a Qleany checkout is Qleany's own.
+    // for anyone running from a Qleany checkout is Qleany's own. Guarded like the
+    // rest: it is a load, and a load replaces whatever is open.
     let vm = deps.manifest.clone();
     ctx.register_action_global(
-        Action::new(name::OPEN_QLEANY_MANIFEST)
-            .on_invoke(move |_i, _c| vm.open_path("qleany.yaml")),
+        Action::new(name::OPEN_QLEANY_MANIFEST).on_invoke(move |_i, c| {
+            let vm = vm.clone();
+            with_unsaved_settled(
+                &vm.clone(),
+                c,
+                tr!(open_manifest_unsaved_title()),
+                tr!(open_manifest_unsaved_message()),
+                move |_ctx| vm.open_path("qleany.yaml"),
+            );
+        }),
     );
 
     ctx.register_shortcut_global(
