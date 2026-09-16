@@ -140,6 +140,58 @@ project-organisation-domain-required = Organisation domain is required
 project-prefix-path = Prefix path
 project-prefix-path-placeholder = default: { $path }
 
+## Entities screen
+
+entities-title = Entities
+entities-list-heading = Entities
+entities-add = Add entity
+entities-delete = Delete entity
+entities-export-mermaid = Export to Mermaid
+entities-empty = No entities yet
+entities-empty-hint = Add one to describe the data your application works with.
+entities-none-selected = No entity selected
+entities-none-selected-hint = Pick an entity on the left to edit it.
+entities-name = Name
+entities-name-placeholder = Enter entity name
+entities-name-required = Entity name is required
+entities-name-pascal-case = Entity name must be in PascalCase
+entities-only-for-heritage = Only for heritage
+entities-only-for-heritage-hint = An abstract entity: never stored, only inherited from.
+entities-inherits-from = Inherits from
+entities-single-model = Single model
+entities-undoable = Undoable
+entities-subtitle-abstract = abstract
+entities-subtitle-extends = extends { $parent }
+entities-subtitle-both = { $left } · { $right }
+
+## Entity fields
+
+fields-list-heading = Fields
+fields-add = Add field
+fields-delete = Delete field
+fields-empty = No fields yet
+fields-empty-hint = Add one to describe what this entity stores.
+fields-none-selected = No field selected
+fields-none-selected-hint = Pick a field on the left to edit it.
+fields-name = Name
+fields-name-placeholder = Enter field name
+fields-name-required = Field name is required
+fields-name-snake-case = Field name must be in snake_case
+fields-type = Type
+fields-referenced-entity = Referenced entity
+fields-relationship = Relationship type
+fields-optional = Optional
+fields-is-list = List
+fields-strong = Strong (cascade delete)
+fields-list-model = List model
+fields-displayed-field = List model displayed field
+fields-displayed-field-placeholder = Enter displayed field name
+fields-enum-name = Enum name
+fields-enum-name-placeholder = Enter enum name
+fields-enum-name-required = Enum name is required
+fields-enum-name-pascal-case = Enum name must be in PascalCase
+fields-enum-values = Enum values, one per line in PascalCase
+
 ## Shared
 
 common-cancel = Cancel
@@ -149,3 +201,4 @@ common-ok = OK
 common-save = Save
 common-discard = Discard
 common-none = None
+common-more-actions = More actions

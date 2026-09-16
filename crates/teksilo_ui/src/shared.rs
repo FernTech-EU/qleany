@@ -6,5 +6,7 @@
 
 pub mod form;
 pub mod list_or_empty;
+pub mod pane;
 pub mod reorder;
+pub mod settle;
 pub mod validation;

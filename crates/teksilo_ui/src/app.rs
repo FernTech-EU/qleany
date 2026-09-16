@@ -10,6 +10,7 @@ use crate::app::commands::CommandDeps;
 use crate::app::nav::NavRail;
 
 use crate::app_ids::AppIds;
+use crate::entities::{EntitiesPage, EntitiesViewModel, FieldViewModel};
 use crate::home::{self, HomeViewModel};
 use crate::manifest::ManifestViewModel;
 use crate::project::{ProjectPage, ProjectViewModel};
@@ -27,6 +28,8 @@ pub struct App {
     // would reset every time anything on the window asked for a rebuild.
     home: HomeViewModel,
     project: ProjectViewModel,
+    entities: EntitiesViewModel,
+    fields: FieldViewModel,
     root_child: Option<WidgetId>,
 }
 
@@ -38,6 +41,22 @@ impl App {
         manifest: ManifestViewModel,
     ) -> Self {
         let project = ProjectViewModel::new(session.single_global.clone(), ids.clone());
+        let entities = EntitiesViewModel::new(
+            session.app_ctx.clone(),
+            ids.clone(),
+            session.workspace_entities.clone(),
+            session.single_entity.clone(),
+        );
+        // The field list's owner is the selected entity, which is the one piece of
+        // state the two view-models share. Handed over as a signal rather than as a
+        // reference to the other view-model, so neither holds the other.
+        let fields = FieldViewModel::new(
+            session.app_ctx.clone(),
+            ids.clone(),
+            session.entity_fields.clone(),
+            session.single_field.clone(),
+            entities.selected(),
+        );
         Self {
             session,
             ids,
@@ -45,6 +64,8 @@ impl App {
             manifest,
             home: HomeViewModel::new(),
             project,
+            entities,
+            fields,
             root_child: None,
         }
     }
@@ -69,6 +90,7 @@ impl Widget for App {
                 ids: self.ids.clone(),
                 parts: self.parts.clone(),
                 manifest: self.manifest.clone(),
+                entities: self.entities.clone(),
             },
         );
 
@@ -84,7 +106,10 @@ impl Widget for App {
         let pages = Switcher::new(selected)
             .child(home::page::page(self.home.clone(), self.manifest.clone()))
             .child(ProjectPage::new(self.project.clone()))
-            .child(TextWidget::new(tr!(nav_entities())))
+            .child(EntitiesPage::new(
+                self.entities.clone(),
+                self.fields.clone(),
+            ))
             .child(TextWidget::new(tr!(nav_features())))
             .child(TextWidget::new(tr!(nav_user_interface())))
             .child(TextWidget::new(tr!(nav_generate())));

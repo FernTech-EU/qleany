@@ -10,6 +10,7 @@ use teksilo::core::BindingLevel;
 use teksilo::prelude::*;
 
 use crate::app_ids::{AppIds, Screen};
+use crate::entities::EntitiesViewModel;
 use crate::intents::name;
 use crate::manifest::ManifestViewModel;
 use crate::shell::menus::MenuParts;
@@ -20,6 +21,7 @@ pub struct CommandDeps {
     pub ids: AppIds,
     pub parts: MenuParts,
     pub manifest: ManifestViewModel,
+    pub entities: EntitiesViewModel,
 }
 
 /// Register everything. Called from `App::build`, on every build: an action
@@ -28,6 +30,21 @@ pub fn register(ctx: &mut BuildContext, deps: &CommandDeps) {
     register_navigation(ctx, deps);
     register_theme(ctx, deps);
     register_manifest(ctx, deps);
+    register_entities(ctx, deps);
+}
+
+/// The Mermaid export: the one entity action that is about the model as a whole
+/// rather than about a selected row.
+///
+/// Registered here rather than on the screen because it is also a menu row, and the
+/// menu renders in an overlay that is a sibling of `App`.
+fn register_entities(ctx: &mut BuildContext, deps: &CommandDeps) {
+    let vm = deps.entities.clone();
+    ctx.register_action_global(
+        Action::new(name::EXPORT_MERMAID)
+            .enabled_when(deps.parts.manifest_open.clone())
+            .on_invoke(move |_i, c| vm.export_to_mermaid(c)),
+    );
 }
 
 /// Open, save, save as, close, and the developer shortcut to Qleany's own manifest.

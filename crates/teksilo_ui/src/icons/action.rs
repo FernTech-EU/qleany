@@ -25,3 +25,24 @@ pub fn undo() -> IconWidget {
 pub fn redo() -> IconWidget {
     IconWidget::from_svg_icon(res!("assets/icons/action/redo.svg")).icon_size(SIZE)
 }
+
+/// Add a row to a list.
+pub fn add() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/add.svg")).icon_size(SIZE)
+}
+
+/// Delete a row.
+pub fn delete() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/delete.svg")).icon_size(SIZE)
+}
+
+/// The row overflow menu. A visible affordance rather than right-click only:
+/// a menu nothing points at is a menu most users never find.
+pub fn more() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/more.svg")).icon_size(SIZE)
+}
+
+/// Export the model as a diagram.
+pub fn diagram() -> IconWidget {
+    IconWidget::from_svg_icon(res!("assets/icons/action/diagram.svg")).icon_size(SIZE)
+}
