@@ -136,10 +136,20 @@ jobs:
 
       # A second, `#[cfg]`-selected implementation of every single and list
       # model that a default build never compiles.
-      - name: Check Teksilo mock arm
+      # The mocks arm is a second `#[cfg]`-selected implementation of every
+      # single and list model — real alternate logic, not a compile target. It
+      # is built, tested and linted: clippy only lints the arm actually
+      # compiled, so the default pass says nothing about this one. Scoped with
+      # `-p`; never combine `--features mocks` with `--workspace`.
+      - name: Teksilo mock arm (build, test, clippy)
         run: |
           cd tests/rust
-          cargo check -p full-rust-app-teksilo-ui --features mocks
+          cargo build -p full-rust-app-teksilo-ui --all-targets --features mocks
+          cargo test -p full-rust-app-teksilo-ui --features mocks
+          # `--no-deps` keeps the lint pass on this crate only: without it
+          # `-D warnings` also fails on the generated feature crates, whose use
+          # cases are `unimplemented!()` scaffolds by design.
+          cargo clippy -p full-rust-app-teksilo-ui --all-targets --features mocks --no-deps -- -D warnings
 
       # Two bins with one name fail `cargo build --workspace`; `cargo check`
       # writes hash-named metadata and passes, so ask cargo for the target list.

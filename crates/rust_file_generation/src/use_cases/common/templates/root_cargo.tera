@@ -78,6 +78,27 @@ frontend = { package = "{{ s.global.application_kebab_name }}-frontend", version
 mobile_bridge = { package = "{{ s.global.application_kebab_name }}-mobile-bridge", version = "0.0.1", path = "{{ s.global.prefix }}/mobile_bridge" }
 {%- endif %}
 
+# Debuginfo, not compilation, dominates a Teksilo project's disk footprint.
+# Measured on examples/rust/full: under Cargo's default `debug = 2` the demo
+# binary was 685 MB, of which 557 MB -- 81% -- was debug sections, and
+# tests/rust/target had reached 22 GB. That matters twice over: GitHub's Actions
+# cache is capped at 10 GB per repository, so a tree this size cannot be cached
+# at all, and a contributor's disk fills up.
+#
+# `line-tables-only` keeps exactly what a bug report needs -- `file:line` in
+# panic messages and backtraces -- and drops only the variable and type
+# information a *step-debugger* wants. To run one crate under gdb/lldb, override
+# that crate rather than editing this line:
+#
+#     [profile.dev.package.teksilo_ui]
+#     debug = 2
+#
+# `split-debuginfo = "unpacked"` then leaves the reduced DWARF in the object
+# files beside the binary instead of copying it into the executable at link time.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
 [profile.release]
 lto = "fat"
 panic = "abort"
