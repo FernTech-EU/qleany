@@ -438,7 +438,7 @@ impl Widget for AppRoot {
         {%- if f.inner.field_type == "Boolean" %}
         form = form.line(
             TextWidget::new(lit!("{{ f.pascal_name }}")),
-            Checkbox::new(self.form.{{ f.snake_name }}.clone()).labels_hidden(true),
+            Checkbox::new(self.form.{{ f.snake_name }}.clone()).labelled_externally(),
         );
         {%- elif f.inner.field_type == "Integer" %}
         form = form.line(

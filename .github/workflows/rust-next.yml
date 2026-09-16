@@ -22,27 +22,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Every --all-features row excludes qleany-teksilo-ui. That crate's
+        # `mocks` feature is a second, `#[cfg]`-selected implementation of every
+        # single and list model, one that fabricates rows and writes nowhere, so
+        # a row that turned it on would be exercising a stub instead of the UI.
+        # The "Build the Teksilo UI" step below keeps the real arm compiled on
+        # every row anyway; ci.yml's `teksilo-ui` job is what builds, tests and
+        # lints both arms, and it does not run on this workflow's triggers.
         include:
           - name: stable
             os: ubuntu-latest
             rust: stable
-            flags: "--all-features"
+            flags: "--all-features --exclude qleany-teksilo-ui"
           - name: linux-beta
             os: ubuntu-latest
             rust: beta
-            flags: "--all-features"
+            flags: "--all-features --exclude qleany-teksilo-ui"
           - name: windows-beta
             os: windows-latest
             rust: beta
-            flags: "--all-features"
+            flags: "--all-features --exclude qleany-teksilo-ui"
           - name: mac-beta
             os: macos-latest
             rust: beta
-            flags: "--all-features"
+            flags: "--all-features --exclude qleany-teksilo-ui"
           - name: nightly
             os: ubuntu-latest
             rust: nightly
-            flags: "--all-features"
+            flags: "--all-features --exclude qleany-teksilo-ui"
           - name: minimal
             os: ubuntu-latest
             rust: stable
@@ -54,24 +61,19 @@ jobs:
           - name: next
             os: ubuntu-latest
             rust: stable
-            flags: "--all-features"
+            flags: "--all-features --exclude qleany-teksilo-ui"
     continue-on-error: ${{ matrix.rust != 'stable' }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # wgpu and winit came in with the Teksilo UI crate, and a cold first build
+    # of that tree does not finish in 30 minutes.
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -82,9 +84,20 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: next-${{ matrix.name }}
+          # A run that times out still warms the dependency cache, so the retry
+          # gets past the wgpu build instead of timing out identically.
+          cache-on-failure: true
 
       - name: Build
         run: cargo build --workspace --all-targets ${{ matrix.flags }}
+
+      # The exclude in `flags` takes the Teksilo UI crate off every `--all-features`
+      # row, which here is every beta and nightly row and both non-Linux rows. That
+      # would leave the newest and most toolchain-sensitive crate in the repository,
+      # wgpu, winit and a proc-macro DSL, uncovered by exactly the toolchains this
+      # workflow exists to warn about. `-p` with no feature flag is the real arm.
+      - name: Build the Teksilo UI (real arm, every row)
+        run: cargo build -p qleany-teksilo-ui --all-targets
 
       - name: Test
         run: cargo test --workspace ${{ matrix.flags }}
@@ -128,20 +141,14 @@ jobs:
           - stable
     continue-on-error: ${{ matrix.rust != '1.90.0' }}  # MSRV is authoritative
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Same wgpu and winit tree as the test job, and clippy is slower than check.
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install system dependencies (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -153,6 +160,9 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: clippy-${{ matrix.rust }}
+          # A run that times out still warms the dependency cache, so the retry
+          # gets past the wgpu build instead of timing out identically.
+          cache-on-failure: true
 
       - name: Lint (ultra-minimal)
         run: cargo clippy --manifest-path Cargo.toml --no-default-features --all-targets -- -D warnings -A deprecated
@@ -160,8 +170,18 @@ jobs:
       - name: Lint (minimal)
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings -A deprecated
 
+      # --all-features excludes qleany-teksilo-ui for the reason spelled out in
+      # the test job's matrix. `Lint (minimal)` above is --workspace, so it still
+      # lints that crate's real arm; `Lint (ultra-minimal)` does not, because
+      # without --workspace it resolves to default-members, which is slint_ui alone.
       - name: Lint (full)
-        run: cargo clippy --workspace --all-features --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany-teksilo-ui --all-targets -- -D warnings -A deprecated
 
       - name: Lint (release)
-        run: cargo clippy --workspace --all-features --release --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany-teksilo-ui --release --all-targets -- -D warnings -A deprecated
+
+      # Clippy only lints the arm that is actually compiled, and no workspace
+      # pass reaches the mocks arm any more. Scoped with `-p`; never combine
+      # `--features mocks` with `--workspace`.
+      - name: Lint (Teksilo mocks arm)
+        run: cargo clippy -p qleany-teksilo-ui --features mocks --all-targets -- -D warnings -A deprecated

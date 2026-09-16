@@ -17,21 +17,23 @@ jobs:
   validate:
     name: Validate Release
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfontconfig1-dev
-
+      # Checkout comes first: the step below is a local composite action, and it
+      # does not exist on the runner until the repository is on disk.
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Verify version matches tag
         run: |
@@ -66,7 +68,7 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -78,14 +80,13 @@ jobs:
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfontconfig1-dev libfreetype-dev libxkbcommon-dev libwayland-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: release-${{ matrix.target }}
+          cache-on-failure: true
 
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
@@ -118,7 +119,7 @@ jobs:
     name: Publish to crates.io
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment:
       name: release
     permissions:
@@ -126,19 +127,23 @@ jobs:
     # Skip for pre-release tags
     if: ${{ !contains(github.ref_name, '-') }}
     steps:
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfontconfig1-dev libfreetype-dev libxkbcommon-dev libwayland-dev
-
+      # Checkout comes first: the step below is a local composite action, and it
+      # does not exist on the runner until the repository is on disk.
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      # This job is re-run by hand whenever the index lags, so a failed attempt
+      # must still leave its verify builds in the cache.
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Auth for trusted publishing on crates.io
         uses: rust-lang/crates-io-auth-action@v1
@@ -166,8 +171,19 @@ jobs:
               | jq -e --arg v "$version" 'select(.vers == $v)' >/dev/null 2>&1
           }
 
+          # `select(.publish != [])` drops the members that carry
+          # `publish = false`, which `cargo metadata` reports as `"publish": []`.
+          # Today that is qleany-teksilo-ui. Such a crate is on no index and never
+          # will be, so `crate_published` always reports it missing and `pending`
+          # is permanently one too high. That does not fail a release: a publish
+          # with everything real excluded warns "nothing to publish" and exits 0.
+          # What it does break is the loop's own bookkeeping: the
+          # "(attempt N, M pending)" line overstates the work left, and the
+          # "All crates already published." early exit can never fire, so every
+          # re-run shells out to a full `cargo publish --workspace` that has
+          # nothing to do.
           mapfile -t CRATES < <(cargo metadata --no-deps --format-version 1 \
-            | jq -r '.packages[] | "\(.name) \(.version)"')
+            | jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"')
 
           for attempt in 1 2 3 4 5; do
             excludes=()

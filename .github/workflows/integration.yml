@@ -35,7 +35,9 @@ jobs:
       && !startsWith(github.event.workflow_run.head_commit.message, 'chore: release')
       && !startsWith(github.event.head_commit.message, 'chore: release')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # `cargo build --workspace` now covers the Teksilo UI crate and its
+    # wgpu/winit tree. A cold cache is a long first build.
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -44,15 +46,12 @@ jobs:
           # not whatever main HEAD happens to be now.
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
+      # This job used to install a shorter list than the rust-example job below,
+      # which already needs build-essential, pkg-config, libxcb1-dev, libx11-dev
+      # and libwayland-dev to compile the same winit tree. Both now take the one
+      # list, so they cannot drift apart again.
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -61,10 +60,15 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: integration
+          # A first run that times out still warms the dependency cache, so the
+          # retry succeeds instead of timing out identically.
+          cache-on-failure: true
 
       - name: Build
         run: cargo build --workspace
 
+      # `qleany` is still the Slint binary: the Teksilo crate builds as
+      # `qleany-teksilo` until step 2 of the port moves the name over.
       - name: Upload binary
         uses: actions/upload-artifact@v7
         with:
@@ -87,19 +91,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            pkg-config \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxcb1-dev \
-            libx11-dev \
-            libxkbcommon-dev \
-            libwayland-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -134,10 +126,8 @@ jobs:
           cd tests/rust
           cargo check --workspace
 
-      # A second, `#[cfg]`-selected implementation of every single and list
-      # model that a default build never compiles.
       # The mocks arm is a second `#[cfg]`-selected implementation of every
-      # single and list model — real alternate logic, not a compile target. It
+      # single and list model, real alternate logic, not a compile target. It
       # is built, tested and linted: clippy only lints the arm actually
       # compiled, so the default pass says nothing about this one. Scoped with
       # `-p`; never combine `--features mocks` with `--workspace`.
