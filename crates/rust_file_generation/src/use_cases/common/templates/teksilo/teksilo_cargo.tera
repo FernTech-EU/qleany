@@ -29,8 +29,10 @@ path = "src/main.rs"
 [features]
 # Render the UI with fabricated data and no backend. Every single and every list
 # model carries a `#[cfg(feature = "mocks")] mod imp` twin with an identical
-# public surface, so no `#[cfg]` leaks into consuming code. Nothing but building
-# both feature modes keeps the two arms in step -- check them both in CI.
+# public surface, so no `#[cfg]` leaks into consuming code. Building both arms is
+# not enough: this one is real alternate logic and clippy only lints the `#[cfg]`
+# arm it compiled, so build, test AND clippy it in CI. See the mocks section of
+# the Teksilo docs for the three commands.
 mocks = []
 
 [dependencies]

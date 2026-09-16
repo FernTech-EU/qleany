@@ -296,8 +296,7 @@ Also in this file, update the UoW **trait** macros to declare which entity opera
 // Read-only actions (use *RO variants):
 #[macros::uow_action(entity = "EntityName", action = "GetRO")]
 #[macros::uow_action(entity = "EntityName", action = "GetMultiRO")]
-// Also available: GetAllRO, GetRelationshipRO, GetRelationshipManyRO, GetRelationshipCountRO,
-//   GetRelationshipInRangeRO, GetRelationshipsFromRightIdsRO
+// Also available: GetAllRO, GetRelationshipRO, GetRelationshipsFromRightIdsRO
 pub trait {{ uc.pascal_name }}UnitOfWorkTrait: QueryUnitOfWork {
     fn publish_{{ uc.snake_name }}_event(&self, ids: Vec<EntityId>, data: Option<String>);
 }
@@ -308,8 +307,7 @@ pub trait {{ uc.pascal_name }}UnitOfWorkTrait: QueryUnitOfWork {
 #[macros::uow_action(entity = "EntityName", action = "Update")]
 // Also available: GetAll, Create, CreateMulti, CreateOrphan, CreateOrphanMulti,
 //   UpdateMulti, UpdateWithRelationships, UpdateWithRelationshipsMulti,
-//   Remove, RemoveMulti, GetRelationship, GetRelationshipMany,
-//   GetRelationshipCount, GetRelationshipInRange, GetRelationshipsFromRightIds,
+//   Remove, RemoveMulti, GetRelationship, GetRelationshipsFromRightIds,
 //   SetRelationship, SetRelationshipMulti, MoveRelationship, Snapshot, Restore
 pub trait {{ uc.pascal_name }}UnitOfWorkTrait: CommandUnitOfWork {
     fn publish_{{ uc.snake_name }}_event(&self, ids: Vec<EntityId>, data: Option<String>);

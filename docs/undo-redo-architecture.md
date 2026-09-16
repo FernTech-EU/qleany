@@ -68,7 +68,7 @@ With the approach chosen, configure your entities using these properties relevan
 | Property              | Type | Default | Effect                                                   |
 |-----------------------|------|---------|----------------------------------------------------------|
 | `undoable`            | bool | false   | Adds undo/redo support to the entity's controller        |
-| `single_model`        | bool | false   | Generates `Single{Entity}` wrapper for QML (C++/Qt only) |
+| `single_model`        | bool | false   | Generates a `Single{Entity}` wrapper (C++/Qt and Teksilo) |
 
 ## Undo-Redo Rules
 

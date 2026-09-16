@@ -481,9 +481,6 @@ The generated UoW implements either `CommandUnitOfWork` (read-write) or `QueryUn
 | `Remove`                       | `fn remove_name(&self, id: &EntityId) -> Result<()>`                             |
 | `RemoveMulti`                  | `fn remove_name_multi(&self, ids: &[EntityId]) -> Result<()>`                    |
 | `GetRelationship`              | `fn get_name_relationship(&self, id: &EntityId, field: &RF) -> Result<Vec<EntityId>>` |
-| `GetRelationshipMany`          | `fn get_name_relationship_many(&self, ids: &[EntityId], field: &RF) -> Result<HashMap<EntityId, Vec<EntityId>>>` |
-| `GetRelationshipCount`         | `fn get_name_relationship_count(&self, id: &EntityId, field: &RF) -> Result<usize>` |
-| `GetRelationshipInRange`       | `fn get_name_relationship_in_range(&self, id: &EntityId, field: &RF, offset: usize, limit: usize) -> Result<Vec<EntityId>>` |
 | `GetRelationshipsFromRightIds` | `fn get_name_relationships_from_right_ids(&self, field: &RF, right_ids: &[EntityId]) -> Result<Vec<(EntityId, Vec<EntityId>)>>` |
 | `SetRelationship`              | `fn set_name_relationship(&self, id: &EntityId, field: &RF, right_ids: &[EntityId]) -> Result<()>` |
 | `SetRelationshipMulti`         | `fn set_name_relationship_multi(&self, field: &RF, relationships: Vec<(EntityId, Vec<EntityId>)>) -> Result<()>` |
@@ -499,12 +496,16 @@ The generated UoW implements either `CommandUnitOfWork` (read-write) or `QueryUn
 | `GetMultiRO`                    | `fn get_name_multi(&self, ids: &[EntityId]) -> Result<Vec<Option<Name>>>`        |
 | `GetAllRO`                      | `fn get_all_name(&self) -> Result<Vec<Name>>`                                    |
 | `GetRelationshipRO`             | `fn get_name_relationship(&self, id: &EntityId, field: &RF) -> Result<Vec<EntityId>>` |
-| `GetRelationshipManyRO`         | `fn get_name_relationship_many(&self, ids: &[EntityId], field: &RF) -> Result<HashMap<EntityId, Vec<EntityId>>>` |
-| `GetRelationshipCountRO`        | `fn get_name_relationship_count(&self, id: &EntityId, field: &RF) -> Result<usize>` |
-| `GetRelationshipInRangeRO`      | `fn get_name_relationship_in_range(&self, id: &EntityId, field: &RF, offset: usize, limit: usize) -> Result<Vec<EntityId>>` |
 | `GetRelationshipsFromRightIdsRO`| `fn get_name_relationships_from_right_ids(&self, field: &RF, right_ids: &[EntityId]) -> Result<Vec<(EntityId, Vec<EntityId>)>>` |
 
 > Do not mix read-only (`*RO`) and write actions in the same unit of work.
+
+These two tables are the complete action set. Any other name is a compile error
+(`Unknown action`) pointing at the attribute. In particular, the relationship
+`many` / `count` / `in_range` operations have no `uow_action` form: they live on
+the entity repositories and are exposed by the generated direct-access entity
+controllers, so a feature unit of work that needs one calls the repository
+itself.
 
 **For long operations**, add `thread_safe = true` to the **implementation** attributes (not the trait). This makes the generated code use `Mutex` instead of `RefCell` for thread safety.
 

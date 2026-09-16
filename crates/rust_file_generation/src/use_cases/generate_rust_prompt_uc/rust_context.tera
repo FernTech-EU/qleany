@@ -196,9 +196,6 @@ Each use case receives a UoW that wraps a database transaction. The UoW provides
 | `#[macros::uow_action(entity = "Name", action = "GetMultiRO")]` | `get_{snake}_multi(ids) -> Result<Vec<Option<Name>>>` |
 | `#[macros::uow_action(entity = "Name", action = "GetAllRO")]` | `get_all_{snake}() -> Result<Vec<Name>>` |
 | `#[macros::uow_action(entity = "Name", action = "GetRelationshipRO")]` | `get_{snake}_relationship(id, field) -> Result<Vec<EntityId>>` |
-| `#[macros::uow_action(entity = "Name", action = "GetRelationshipManyRO")]` | `get_{snake}_relationship_many(ids, field) -> Result<HashMap<EntityId, Vec<EntityId>>>` |
-| `#[macros::uow_action(entity = "Name", action = "GetRelationshipCountRO")]` | `get_{snake}_relationship_count(id, field) -> Result<usize>` |
-| `#[macros::uow_action(entity = "Name", action = "GetRelationshipInRangeRO")]` | `get_{snake}_relationship_in_range(id, field, offset, limit) -> Result<Vec<EntityId>>` |
 | `#[macros::uow_action(entity = "Name", action = "GetRelationshipsFromRightIdsRO")]` | `get_{snake}_relationships_from_right_ids(field, right_ids) -> Result<Vec<(EntityId, Vec<EntityId>)>>` |
 
 #### Read-write actions (use with `CommandUnitOfWork`)
@@ -214,14 +211,11 @@ Each use case receives a UoW that wraps a database transaction. The UoW provides
 | `#[macros::uow_action(entity = "Name", action = "CreateOrphanMulti")]` | `create_orphan_{snake}_multi(entities) -> Result<Vec<Name>>` |
 | `#[macros::uow_action(entity = "Name", action = "Update")]` | `update_{snake}(entity) -> Result<Name>` (scalar fields only) |
 | `#[macros::uow_action(entity = "Name", action = "UpdateMulti")]` | `update_{snake}_multi(entities) -> Result<Vec<Name>>` (scalar fields only) |
-| `#[macros::uow_action(entity = "Name", action = "UpdateWithRelationships")]` | `update_with_relationships_{snake}(entity) -> Result<Name>` (scalars + relationships) |
-| `#[macros::uow_action(entity = "Name", action = "UpdateWithRelationshipsMulti")]` | `update_with_relationships_{snake}_multi(entities) -> Result<Vec<Name>>` (scalars + relationships) |
+| `#[macros::uow_action(entity = "Name", action = "UpdateWithRelationships")]` | `update_{snake}_with_relationships(entity) -> Result<Name>` (scalars + relationships) |
+| `#[macros::uow_action(entity = "Name", action = "UpdateWithRelationshipsMulti")]` | `update_{snake}_with_relationships_multi(entities) -> Result<Vec<Name>>` (scalars + relationships) |
 | `#[macros::uow_action(entity = "Name", action = "Remove")]` | `remove_{snake}(id) -> Result<()>` |
 | `#[macros::uow_action(entity = "Name", action = "RemoveMulti")]` | `remove_{snake}_multi(ids) -> Result<()>` |
 | `#[macros::uow_action(entity = "Name", action = "GetRelationship")]` | `get_{snake}_relationship(id, field) -> Result<Vec<EntityId>>` |
-| `#[macros::uow_action(entity = "Name", action = "GetRelationshipMany")]` | `get_{snake}_relationship_many(ids, field) -> Result<HashMap<EntityId, Vec<EntityId>>>` |
-| `#[macros::uow_action(entity = "Name", action = "GetRelationshipCount")]` | `get_{snake}_relationship_count(id, field) -> Result<usize>` |
-| `#[macros::uow_action(entity = "Name", action = "GetRelationshipInRange")]` | `get_{snake}_relationship_in_range(id, field, offset, limit) -> Result<Vec<EntityId>>` |
 | `#[macros::uow_action(entity = "Name", action = "GetRelationshipsFromRightIds")]` | `get_{snake}_relationships_from_right_ids(field, right_ids) -> Result<Vec<(EntityId, Vec<EntityId>)>>` |
 | `#[macros::uow_action(entity = "Name", action = "SetRelationship")]` | `set_{snake}_relationship(id, field, ids) -> Result<()>` |
 | `#[macros::uow_action(entity = "Name", action = "SetRelationshipMulti")]` | `set_{snake}_relationship_multi(field, relationships) -> Result<()>` |

@@ -67,7 +67,7 @@ qleany generate --dry-run
 # Generate only files for a specific feature, entity, or group
 qleany generate feature MyFeature
 qleany generate entity Car
-qleany generate group "use_cases"
+qleany generate group "features"   # `qleany list groups` lists them all
 
 # Generate a specific file by path
 qleany generate file src/entities.rs

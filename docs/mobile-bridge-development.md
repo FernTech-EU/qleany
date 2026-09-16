@@ -129,7 +129,7 @@ Undoable entities accept an optional `stack_id` parameter.
 
 ### Feature Commands
 
-Feature use case method names include the **feature prefix** to avoid collisions across features. For example, a `save` use case in the `handling_manifest` feature becomes `handling_manifest_save()`. The async wrappers follow the same convention: `handlingManifestSaveAsync()` in Swift/Kotlin.
+Feature use case method names include the **feature prefix** to avoid collisions across features. For example, a `save` use case in the `handling_manifest` feature becomes `handling_manifest_save()`. The async wrappers follow the same convention: `handlingManifestSaveAsync()` in Swift/Kotlin. The DTOs and enums generated from a feature use case carry the same prefix, so that feature's `SaveDto` is exported as `MobileHandlingManifestSaveDto`. Types generated from an entity take only the `Mobile` prefix, with no feature name: `MobileTaskDto`, `MobileCreateTaskDto`.
 
 Feature use cases follow one of five patterns depending on their properties:
 
@@ -183,7 +183,7 @@ class AutoSaver: MobileAutoSaveListener {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             // Call your custom "Save" feature use case
-            try? self.backend.save(dto: MobileSaveDto(filePath: currentFilePath))
+            try? self.backend.handlingManifestSave(dto: MobileHandlingManifestSaveDto(manifestPath: currentManifestPath))
         }
         saveWorkItem = work
         DispatchQueue.global().asyncAfter(deadline: .now() + 1.0, execute: work)
@@ -206,7 +206,7 @@ class AutoSaver(
             delay(1000)
             withContext(Dispatchers.IO) {
                 // Call your custom "Save" feature use case
-                runCatching { backend.save(MobileSaveDto(filePath = currentFilePath)) }
+                runCatching { backend.handlingManifestSave(MobileHandlingManifestSaveDto(manifestPath = currentManifestPath)) }
             }
         }
     }

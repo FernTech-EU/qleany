@@ -206,6 +206,39 @@ Entities 'Base' and 'Basis' both generate the collection name 'bases'; rename on
 Entities marked `only_for_heritage: true` are skipped — the generators never
 materialize them, so they own no collection.
 
+### Also changed: generated dev builds carry line tables only
+
+The generated workspace root `Cargo.toml` now emits a dev profile alongside the
+release one:
+
+```toml
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+```
+
+Debuginfo, not code, dominates the disk footprint of a project that pulls in a
+large dependency tree, which in practice means a Teksilo one. Measured on
+`examples/rust/full`, the demo binary was 685 MB, of which 557 MB (81%) was
+debug sections, and the build tree had reached 22 GB. The same binary is 203 MB
+afterwards, and a clean build of the same tree 7.8 GB.
+
+`line-tables-only` keeps exactly what a bug report needs, `file:line` in panic
+messages and backtraces, and drops only the variable and type information a
+*step-debugger* wants. To run one crate under gdb or lldb, override that crate
+rather than editing the shared line:
+
+```toml
+[profile.dev.package.<crate>]
+debug = 2
+```
+
+**This one is worth a look before you regenerate.** The root `Cargo.toml` is an
+**Aggregate** file, so a plain `qleany generate` rewrites it: the profile lands
+on an existing project at its next regeneration, and any `[profile.dev]` you had
+added there by hand is replaced. Diff the file first if you have been
+maintaining it.
+
 ### Other generator fixes in this release
 
 These change generated output, but need no action from you:
@@ -955,7 +988,7 @@ Qleany auto-migrates v2+ manifests on load. When you open a v3 manifest, the mig
 
 If you save the manifest afterwards (from the UI), the file is written as v4.
 
-From the CLI, it's the same: if you run `qleany generate` on a v3 manifest, it will be auto-migrated to v4 before generation. To only migrate the manifest, use `qleany migrate` instead.
+From the CLI, it's the same: if you run `qleany generate` on a v3 manifest, it will be auto-migrated to v4 before generation. To only migrate the manifest, use `qleany upgrade` instead.
 
 
 ### Manual migration
@@ -1010,7 +1043,7 @@ Qleany auto-migrates v2+ manifests on load. When you open a v2 manifest, the mig
 
 If you save the manifest afterwards (from the UI), the file is written as v3.
 
-From the CLI, it's the same: if you run `qleany generate` on a v2 manifest, it will be auto-migrated to v3 before generation. To only migrate the manifest, use `qleany migrate` instead.
+From the CLI, it's the same: if you run `qleany generate` on a v2 manifest, it will be auto-migrated to v3 before generation. To only migrate the manifest, use `qleany upgrade` instead.
 
 ### Manual migration
 

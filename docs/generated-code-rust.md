@@ -321,18 +321,19 @@ pub fn create(
 #[macros::uow_action(entity = "Workspace", action = "GetMulti")]
 #[macros::uow_action(entity = "Workspace", action = "Update")]
 #[macros::uow_action(entity = "Workspace", action = "UpdateMulti")]
-#[macros::uow_action(entity = "Workspace", action = "Delete")]
+#[macros::uow_action(entity = "Workspace", action = "Remove")]
 #[macros::uow_action(entity = "Workspace", action = "RemoveMulti")]
 #[macros::uow_action(entity = "Workspace", action = "GetRelationship")]
-#[macros::uow_action(entity = "Workspace", action = "GetRelationshipMany")]
-#[macros::uow_action(entity = "Workspace", action = "GetRelationshipCount")]
-#[macros::uow_action(entity = "Workspace", action = "GetRelationshipInRange")]
 #[macros::uow_action(entity = "Workspace", action = "GetRelationshipsFromRightIds")]
 #[macros::uow_action(entity = "Workspace", action = "SetRelationship")]
 #[macros::uow_action(entity = "Workspace", action = "SetRelationshipMulti")]
 #[macros::uow_action(entity = "Workspace", action = "MoveRelationship")]
 impl WorkspaceUnitOfWorkTrait for WorkspaceUnitOfWork {}
 ```
+
+The macro accepts a fixed set of action names. See
+[Available Actions](api-reference-rust.md#available-actions) for the full list.
+Any other name is a compile error (`Unknown action`).
 
 ### DTO Mapping
 
@@ -477,8 +478,22 @@ every other owner's children and lose the order the user chose.
 **Mocks** — each single and list model carries a second implementation behind
 the crate's `mocks` feature, selected by `#[cfg]` with an identical public
 surface, so no `#[cfg]` leaks into consuming code. `cargo run --features mocks`
-renders the UI against fabricated data with no backend. Only building both
-feature modes keeps the two arms in step, so check both in CI.
+renders the UI against fabricated data with no backend. Building both feature
+modes is not enough to keep the two arms in step: the mocks arm is real
+alternate logic, it carries its own generated tests, and clippy only ever lints
+the `#[cfg]` arm it actually compiled, so the default pass says nothing about
+this one. Build, test *and* lint it in CI:
+
+```sh
+cargo build  -p <app>-teksilo-ui --all-targets --features mocks
+cargo test   -p <app>-teksilo-ui --features mocks
+cargo clippy -p <app>-teksilo-ui --all-targets --features mocks --no-deps -- -D warnings
+```
+
+Scope with `-p`: the UI crate is the only one declaring the feature, so never
+combine `--features mocks` with `--workspace`. `--no-deps` keeps `-D warnings`
+off the generated feature crates, whose use cases are `unimplemented!()`
+scaffolds by design.
 
 **Wiring** — a subscription made from a widget's `build` lasts exactly one build
 cycle, so `Session::wire_all(ctx)` must be called from `build` on *every* build.

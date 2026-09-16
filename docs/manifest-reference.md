@@ -179,7 +179,7 @@ features:
 | `inherits_from`       | string | none     | Parent entity for inheritance                       |
 | `only_for_heritage`   | bool   | false    | Entity used only as base class                      |
 | `undoable`            | bool   | false    | Enable undo/redo for this entity's controller       |
-| `single_model`        | bool   | false    | Generate `Single{Entity}` QML wrapper (C++/Qt only) |
+| `single_model`        | bool   | false    | Generate a `Single{Entity}` wrapper (C++/Qt and Teksilo) |
 
 ---
 ## Field options
@@ -193,8 +193,8 @@ features:
 | `optional`                   | bool   | false    | For `one_to_one` and `many_to_one`                                                                 |
 | `is_list`                    | bool   | false    | Field is a list/array. Cannot be used with `entity` or `enum` types, and cannot be combined with `optional` |
 | `strong`                     | bool   | false    | For `one_to_one`, `one_to_many`, and `ordered_one_to_many`, enable cascade deletion                |
-| `list_model`                 | bool   | false    | For C++/Qt only, generate a C++ QAbstractListModel and its QML wrapper for this relationship field |
-| `list_model_displayed_field` | string | none     | For C++/Qt only, default display role for the generated ListModel                                  |
+| `list_model`                 | bool   | false    | Generate a list model for this relationship field (C++/Qt and Teksilo)                             |
+| `list_model_displayed_field` | string | none     | Default display role for the generated list model                                                  |
 | `enum_name`                  | string | none     | For `enum` type, name of the enum (PascalCase)                                                     |
 | `enum_values`                | array  | none     | For `enum` type, list of enum values (see Enum Fields section for complex variant syntax)           |
 
@@ -207,12 +207,16 @@ features:
 |------------|--------------------------------|-------------------------------------|
 | `boolean`  | True/false value               | `is_active: true`                   |
 | `integer`  | Whole number                   | `count: 42`                         |
+| `uinteger` | Unsigned whole number          | `id: 42`                            |
 | `float`    | Decimal number                 | `price: 19.99`                      |
 | `string`   | Text                           | `name: "Alice"`                     |
 | `uuid`     | Unique identifier              | `id: "550e8400-..."`                |
 | `datetime` | Date and time                  | `created_at: "2024-01-15T10:30:00"` |
 | `entity`   | Relationship to another entity | See relationship section            |
 | `enum`     | Enumerated value               | See enum section                    |
+
+`bool`, `int` and `uint` are accepted as aliases for `boolean`, `integer` and
+`uinteger`. The mandatory `id` field is a `uinteger`.
 
 
 
@@ -335,12 +339,17 @@ When `type: entity`, additional options define the relationship:
 | `optional` | `one_to_one`, `many_to_one`                        | Validated on create/update (0..1 instead of 1..1)   |
 | `strong`   | `one_to_one`, `one_to_many`, `ordered_one_to_many` | Cascade deletion — removing parent removes children |
 
-### QML Generation Flags (C++/Qt only)
+### List Model Generation Flags
 
-| Flag                         | Effect                                                 |
-|------------------------------|--------------------------------------------------------|
-| `list_model`                 | Generate `{Entity}ListModelFrom{Parent}{Relationship}` |
-| `list_model_displayed_field` | Default display role for the list model                |
+These drive the C++/Qt single and list models, which are generated for every
+C++/Qt project rather than only the QML ones, and, when `rust_teksilo` is
+enabled, the Teksilo singles and list models under `crates/teksilo_ui/`. The
+Rust CLI and Slint targets ignore them.
+
+| Flag                         | Effect                                    |
+|------------------------------|-------------------------------------------|
+| `list_model`                 | Generate an `{Entity}{Field}ListModel`    |
+| `list_model_displayed_field` | Default display role for the list model   |
 
 ### Validation Rules
 
@@ -353,7 +362,12 @@ N.A.: Not applicable for this relationship type. There will be no change in gene
 
 Note: If one_to_one holds a weak relationship (`strong: false`), it couldn't be required (so, it must be `optional: true`). There is the risk of a dangling reference if the entity targeted by the reference is deleted.
 
-Some invalid combinations are rejected at manifest parsing. This validation step is still in the works.
+The `optional` column is enforced by `qleany check`, which also runs before generation: a weak
+`one_to_one` or `many_to_one` that isn't optional is rejected by rule **C43**, and a to-many
+relationship marked `optional` by rule **C32**. The `strong` column records what the generator
+does with the flag, not something `check` rejects. Every rule has a stable id; type
+`qleany check --rules` for the full catalogue (49 critical and 4 warning rules at the time of
+writing). Any critical error aborts `qleany generate`.
 
 ---
 
@@ -593,7 +607,7 @@ You can't put entities in DTOs. Only primitive types are allowed because entitie
 | Option        | Type   | Default  | Description                                                  |
 |---------------|--------|----------|--------------------------------------------------------------|
 | `name`        | string | required | Field name (snake_case)                                      |
-| `type`        | string | required | Field type (boolean, integer, float, string, uuid, datetime) |
+| `type`        | string | required | Field type (boolean, integer, uinteger, float, string, uuid, datetime, enum) |
 | `is_list`     | bool   | false    | Field is a list/array                                        |
 | `optional`    | bool   | false    | Field can be Option<>/std::optional                          |
 | `enum_name`   | string | none     | For `enum` type, name of the enum                            |
