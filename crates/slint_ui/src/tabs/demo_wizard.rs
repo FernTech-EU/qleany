@@ -19,11 +19,42 @@ use rust_file_generation::rust_file_generation_controller;
 use slint::ComponentHandle;
 
 use crate::app_context::AppContext;
-use crate::cli::LanguageOption;
-use crate::cli_handlers::common::run_checks;
 use crate::{App, DemoWizardState};
 
 const ROOT_SYSTEM_ID: u64 = 1;
+
+/// Which language the demo generates.
+///
+/// Local to this wizard since step 2 of the Teksilo port, which took the command
+/// line and its `clap`-derived twin of this enum to `crates/teksilo_ui`. Two
+/// variants and no derive is cheaper than keeping a dependency on a module that
+/// is no longer in this crate.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LanguageOption {
+    Rust,
+    CppQt,
+}
+
+/// Refuse to generate from a manifest that does not validate.
+///
+/// The CLI's `run_checks` printed warnings as it went; this one is called with
+/// the equivalent of `--quiet` and only ever needs the verdict, so it logs and
+/// returns rather than writing to stdout from under a GUI.
+fn run_checks(app_context: &Arc<AppContext>) -> Result<()> {
+    let report =
+        handling_manifest_controller::check(&app_context.db_context, &app_context.event_hub)?;
+    for warning in &report.warnings {
+        log::warn!("demo manifest: {warning}");
+    }
+    if report.critical_errors.is_empty() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Manifest has {} critical error(s): {}",
+        report.critical_errors.len(),
+        report.critical_errors.join("; ")
+    );
+}
 
 pub fn init(app: &App, app_context: &Arc<AppContext>) {
     setup_browse_path_callback(app);
@@ -277,11 +308,7 @@ fn run_demo_generation(
     handling_manifest_controller::load(&app_context.db_context, &app_context.event_hub, &load_dto)?;
 
     set_progress(app_weak, 20.0, "Running checks...");
-    let output = crate::cli::OutputContext {
-        verbose: false,
-        quiet: true,
-    };
-    run_checks(app_context, &output)?;
+    run_checks(app_context)?;
 
     // Fill file list
     set_progress(app_weak, 25.0, "Populating file list...");

@@ -52,25 +52,32 @@ impl TreeNode {
 /// # Example
 ///
 /// ```
-/// let files = vec![
-///     "src/main.rs",
-///     "src/cli/mod.rs",
-///     "src/cli/args.rs",
-///     "Cargo.toml",
-/// ];
+/// use teksilo_ui::cli_handlers::list::file_tree::render_file_tree;
+///
+/// let files = ["src/main.rs", "src/cli/mod.rs", "src/cli/args.rs", "Cargo.toml"];
 /// let tree = render_file_tree(&files);
-/// println!("{}", tree);
+/// assert_eq!(
+///     tree,
+///     "\
+/// ├── Cargo.toml
+/// └── src/
+///     ├── cli/
+///     │   ├── args.rs
+///     │   └── mod.rs
+///     └── main.rs
+/// "
+/// );
 /// ```
 ///
-/// Output:
-/// ```text
-/// Cargo.toml
-/// src/
-/// ├── cli/
-/// │   ├── args.rs
-/// │   └── mod.rs
-/// └── main.rs
-/// ```
+/// Top-level entries carry a connector too, unlike `tree(1)`, which prints the
+/// directory it was given as a bare root above them. There is no such root here:
+/// the paths are relative to a manifest, not to a directory that was walked.
+///
+/// This example went four years without running. `crates/slint_ui` was a
+/// binary-only crate and cargo does not collect doctests from a binary, so the
+/// snippet did not compile (it called the function with no path to it) and the
+/// output block below it was wrong as well. Moving the CLI into a crate with a
+/// `[lib]` is what surfaced both.
 pub fn render_file_tree(files: &[impl AsRef<str>]) -> String {
     let mut root = TreeNode::new();
 

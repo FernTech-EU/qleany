@@ -1,3 +1,3 @@
 fn main() {
-    teksilo_ui::run();
+    teksilo_ui::entry();
 }

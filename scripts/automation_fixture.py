@@ -49,7 +49,7 @@ def app_binary():
     Debug on purpose: release has no automation bridge.
 
     The rebuild is not a convenience. `cargo test -p qleany-teksilo-ui --features
-    mocks` overwrites `target/debug/qleany-teksilo` with the mocks build, and a
+    mocks` overwrites `target/debug/qleany` with the mocks build, and a
     probe that then drove it would find "Mock Entity 1" in every list, fail in a
     way that reads like a UI regression, and take a while to be recognised for
     what it is. Building here means the binary a probe drives is always the one it
@@ -61,7 +61,7 @@ def app_binary():
         return env
     target = os.environ.get("CARGO_TARGET_DIR") or repo_path("target")
     built = subprocess.run(
-        ["cargo", "build", "-p", "qleany-teksilo-ui", "--bin", "qleany-teksilo"],
+        ["cargo", "build", "-p", "qleany-teksilo-ui", "--bin", "qleany"],
         cwd=repo_root(),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -70,7 +70,7 @@ def app_binary():
         raise SystemExit(
             "could not build the app:\n" + built.stderr.decode("utf-8", "replace")
         )
-    candidate = os.path.join(target, "debug", "qleany-teksilo")
+    candidate = os.path.join(target, "debug", "qleany")
     if not os.path.exists(candidate):
         raise SystemExit(f"cargo built nothing at {candidate}")
     return candidate

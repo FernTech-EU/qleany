@@ -13,6 +13,14 @@ keywords.workspace = true
 categories.workspace = true
 build = "build.rs"
 
+
+# GUI only since step 2: the CLI and the `qleany` binary name went to
+# crates/teksilo_ui. The package is still called `qleany` until step 3, so this
+# has to be spelled out or cargo would infer the old name from the package.
+[[bin]]
+name = "qleany-slint"
+path = "src/main.rs"
+
 [dependencies]
 slint = { version = "1.15" }
 log = "0.4"

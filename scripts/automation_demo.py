@@ -164,8 +164,17 @@ def main():
             "US-DEMO-01 declining does not open the demo",
         )
         checks.check(unsaved(session), "and leaves the unsaved work alone")
+        # Close asks too, since US-SAFE-03. Answer it, or the manifest stays open
+        # and dirty and the next Run demo click gets the guard rather than the
+        # demo, which reads as "the dialog opened" and fails everything after it.
         session.click(button(session.nodes(), "Close current manifest"))
         session.call("settle", SETTLE)
+        discard = session.find("Discard", timeout=3)
+        checks.check(discard is not None, "US-SAFE-03 Close asks before discarding")
+        if discard is not None:
+            session.click(discard)
+            session.call("settle", SETTLE)
+        checks.check(not unsaved(session), "and discarding leaves nothing unsaved")
 
         open_demo(session)
         checks.check(dialog_is_open(session), "US-DEMO-01 Run demo opens a dialog")

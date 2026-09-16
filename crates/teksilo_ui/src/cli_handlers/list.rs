@@ -1,8 +1,7 @@
-mod file_tree;
+pub mod file_tree;
 
-use crate::app_context::AppContext;
 use crate::cli::{ListArgs, ListTarget, OutputContext, OutputFormat};
-use crate::cli_handlers::common::{TargetLanguage, get_target_language, run_checks};
+use crate::cli_handlers::common::{TargetLanguage, get_target_language, run_checks, system_id};
 use anyhow::Result;
 use common::direct_access::system::SystemRelationshipField;
 use common::entities::{FileNature, FileStatus};
@@ -10,15 +9,13 @@ use common::long_operation::OperationStatus;
 use cpp_qt_file_generation::cpp_qt_file_generation_controller;
 use direct_access::{EntityDto, FileDto, UseCaseDto, file_controller, system_controller};
 use file_generation_shared_steps::file_generation_shared_steps_controller;
+use frontend::AppContext;
 use handling_manifest::handling_manifest_controller;
 use rust_file_generation::rust_file_generation_controller;
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
-
-/// The root system entity ID (singleton in the database)
-const ROOT_SYSTEM_ID: u64 = 1;
 
 /// Resolve status flags into the set of FileStatus values to include.
 /// Default (no flags): Modified + New.
@@ -84,7 +81,7 @@ fn resolve_nature_filter(
 }
 
 pub fn execute(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     manifest_path: &Path,
     args: &ListArgs,
     output: &OutputContext,
@@ -104,11 +101,7 @@ pub fn execute(
     }
 }
 
-fn list_files(
-    app_context: &Arc<AppContext>,
-    args: &ListArgs,
-    output: &OutputContext,
-) -> Result<()> {
+fn list_files(app_context: &Rc<AppContext>, args: &ListArgs, output: &OutputContext) -> Result<()> {
     let target_language = get_target_language(app_context)?;
 
     // Step 1: Fill file list in DB
@@ -174,7 +167,7 @@ fn list_files(
     // Step 4: Retrieve all files and filter by status
     let file_ids = system_controller::get_relationship(
         &app_context.db_context,
-        &ROOT_SYSTEM_ID,
+        &system_id(app_context)?,
         &SystemRelationshipField::Files,
     )?;
 
@@ -210,7 +203,7 @@ fn list_files(
 
 /// Polls a long operation until it completes, reporting progress if verbose.
 fn poll_long_operation(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     operation_id: &str,
     output: &OutputContext,
 ) -> Result<()> {
@@ -347,7 +340,7 @@ fn display_file_list(files: &[&FileDto], args: &ListArgs, output: &OutputContext
 }
 
 fn list_entities(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     args: &ListArgs,
     output: &OutputContext,
 ) -> Result<()> {
@@ -411,7 +404,7 @@ fn list_entities(
 }
 
 fn list_features(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     args: &ListArgs,
     output: &OutputContext,
 ) -> Result<()> {
@@ -491,7 +484,7 @@ fn list_features(
 }
 
 fn list_groups(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     args: &ListArgs,
     output: &OutputContext,
 ) -> Result<()> {
@@ -526,7 +519,7 @@ fn list_groups(
 
     let file_ids = system_controller::get_relationship(
         &app_context.db_context,
-        &ROOT_SYSTEM_ID,
+        &system_id(app_context)?,
         &SystemRelationshipField::Files,
     )?;
     let mut groups: BTreeMap<String, usize> = BTreeMap::new();

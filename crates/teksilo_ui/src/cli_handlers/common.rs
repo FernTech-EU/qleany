@@ -1,9 +1,10 @@
-use crate::app_context::AppContext;
 use crate::cli::{LanguageOption, OutputContext};
 use anyhow::{Result, bail};
+use frontend::AppContext;
+use frontend::EntityId;
 use handling_manifest::handling_manifest_controller;
 use std::io::{self, IsTerminal, Write};
-use std::sync::Arc;
+use std::rc::Rc;
 
 /// Check that stdin is a terminal. Call this before any interactive prompt
 /// so that non-interactive callers (CI, LLMs) get a clear error instead of
@@ -49,7 +50,7 @@ pub fn prompt_language() -> Result<LanguageOption> {
         other => bail!("Invalid language choice: '{}'", other),
     }
 }
-pub fn get_target_language(app_context: &Arc<AppContext>) -> Result<TargetLanguage> {
+pub fn get_target_language(app_context: &Rc<AppContext>) -> Result<TargetLanguage> {
     use direct_access::global_controller;
 
     let global_dtos = global_controller::get_all(&app_context.db_context)?;
@@ -67,7 +68,7 @@ pub fn get_target_language(app_context: &Arc<AppContext>) -> Result<TargetLangua
 
 /// Run semantic checks on the loaded manifest. Prints warnings/errors and
 /// returns an error if any critical errors are found.
-pub fn run_checks(app_context: &Arc<AppContext>, output: &OutputContext) -> Result<()> {
+pub fn run_checks(app_context: &Rc<AppContext>, output: &OutputContext) -> Result<()> {
     let check_result =
         handling_manifest_controller::check(&app_context.db_context, &app_context.event_hub)?;
 
@@ -255,4 +256,19 @@ fn detect_distro_family() -> DistroFamily {
     }
 
     DistroFamily::Unknown
+}
+
+/// The `System` row, read from `Root` rather than assumed to be 1.
+///
+/// Four CLI handlers each carried `const ROOT_SYSTEM_ID: u64 = 1`, and two
+/// Slint screens carried a fifth and sixth copy. That is true of a freshly
+/// seeded store and stops being true the moment anything is created before it,
+/// at which point the handler silently reads another entity's relationships.
+///
+/// The GUI resolves the same thing through [`crate::bootstrap::system_id`] and
+/// keeps it in `AppIds`; a CLI process is one command long, so it reads it where
+/// it needs it.
+pub fn system_id(app_context: &Rc<AppContext>) -> Result<EntityId> {
+    crate::bootstrap::system_id(app_context)
+        .ok_or_else(|| anyhow::anyhow!("no System in the store; the application failed to start"))
 }

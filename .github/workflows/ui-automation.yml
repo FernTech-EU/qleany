@@ -85,7 +85,7 @@ jobs:
         run: cargo install teksilo-automation-mcp --locked
 
       # No build step: `fixture.app_binary()` runs `cargo build -p qleany-teksilo-ui
-      # --bin qleany-teksilo` every time, on purpose, so a probe always drives the
+      # --bin qleany` every time, on purpose, so a probe always drives the
       # real-backend debug binary whatever was compiled last.
       #
       # Every probe runs even after one fails. Stopping at the first would hide the

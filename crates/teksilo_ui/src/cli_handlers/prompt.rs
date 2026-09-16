@@ -1,4 +1,3 @@
-use crate::app_context::AppContext;
 use crate::cli::{OutputContext, PromptArgs};
 use crate::cli_handlers::common::run_checks;
 use crate::cli_handlers::common::{TargetLanguage, get_target_language};
@@ -6,15 +5,16 @@ use anyhow::{Result, anyhow};
 use cpp_qt_file_generation::GenerateCppQtPromptDto;
 use cpp_qt_file_generation::cpp_qt_file_generation_controller;
 use direct_access::{feature_controller, global_controller, use_case_controller};
+use frontend::AppContext;
 use handling_manifest::handling_manifest_controller;
 use heck::AsSnakeCase;
 use rust_file_generation::GenerateRustPromptDto;
 use rust_file_generation::rust_file_generation_controller;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 pub fn execute(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     manifest_path: &Path,
     args: &PromptArgs,
     output: &OutputContext,
@@ -153,7 +153,7 @@ pub fn execute(
 }
 
 fn list_use_cases(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     manifest_path: &Path,
     target_language: &TargetLanguage,
 ) -> Result<()> {

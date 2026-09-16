@@ -1,13 +1,13 @@
-use crate::app_context::AppContext;
 use crate::cli::{OutputContext, OutputFormat, ShowArgs, ShowTarget};
 use crate::cli_handlers::common::run_checks;
 use anyhow::Result;
+use frontend::AppContext;
 use handling_manifest::handling_manifest_controller;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 pub fn execute(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     manifest_path: &Path,
     args: &ShowArgs,
     output: &OutputContext,
@@ -48,7 +48,7 @@ fn show_manifest(manifest_path: &Path, args: &ShowArgs) -> Result<()> {
     Ok(())
 }
 
-fn show_config(app_context: &Arc<AppContext>, args: &ShowArgs) -> Result<()> {
+fn show_config(app_context: &Rc<AppContext>, args: &ShowArgs) -> Result<()> {
     use common::direct_access::workspace::WorkspaceRelationshipField;
     use direct_access::{global_controller, workspace_controller};
 
@@ -95,7 +95,7 @@ fn show_config(app_context: &Arc<AppContext>, args: &ShowArgs) -> Result<()> {
     Ok(())
 }
 
-fn show_entity(app_context: &Arc<AppContext>, name: &str, args: &ShowArgs) -> Result<()> {
+fn show_entity(app_context: &Rc<AppContext>, name: &str, args: &ShowArgs) -> Result<()> {
     use common::direct_access::entity::EntityRelationshipField;
     use common::direct_access::workspace::WorkspaceRelationshipField;
     use direct_access::{entity_controller, field_controller, workspace_controller};
@@ -170,7 +170,7 @@ fn show_entity(app_context: &Arc<AppContext>, name: &str, args: &ShowArgs) -> Re
     Ok(())
 }
 
-fn show_feature(app_context: &Arc<AppContext>, name: &str, args: &ShowArgs) -> Result<()> {
+fn show_feature(app_context: &Rc<AppContext>, name: &str, args: &ShowArgs) -> Result<()> {
     use common::direct_access::feature::FeatureRelationshipField;
     use common::direct_access::workspace::WorkspaceRelationshipField;
     use direct_access::{feature_controller, use_case_controller, workspace_controller};

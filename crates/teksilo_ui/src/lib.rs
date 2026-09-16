@@ -28,6 +28,8 @@ pub mod app;
 pub mod app_ids;
 pub mod bootstrap;
 pub mod check;
+pub mod cli;
+pub mod cli_handlers;
 pub mod demo;
 pub mod edit;
 pub mod entities;
@@ -71,20 +73,42 @@ fn app_locales() -> &'static [(&'static str, &'static [&'static str])] {
     )
 }
 
-/// Build and run the application.
-pub fn run() {
+/// The binary's entry point: a subcommand, or the window.
+///
+/// `initialize_app` runs before the command line is dispatched, not after. Every
+/// CLI handler resolves `Root` or `System`, so a subcommand against an unseeded
+/// store fails on an empty database rather than doing anything useful. The Slint
+/// binary ordered it the same way and for the same reason.
+pub fn entry() {
     env_logger::init();
 
     let app_ctx = Rc::new(AppContext::new());
-
-    // Seed Root and System before anything reads them. Every manifest operation
-    // resolves through Root, so without this a load fails on an empty store and the
-    // app simply never opens anything.
     if let Err(e) = handling_app_lifecycle_commands::initialize_app(&app_ctx) {
         log::error!("could not initialize the application: {e:?}");
+        std::process::exit(1);
+    }
+
+    // `None` means no subcommand was given, so this is a GUI launch. Anything
+    // else has already run and reported for itself.
+    if crate::cli::run_cli(&app_ctx).is_none() {
+        cleanup(&app_ctx);
         return;
     }
 
+    run_with(app_ctx.clone());
+    cleanup(&app_ctx);
+}
+
+/// Close the store down and let the background dispatch thread exit.
+fn cleanup(app_ctx: &Rc<AppContext>) {
+    if let Err(e) = handling_app_lifecycle_commands::clean_up_before_exit(app_ctx) {
+        log::error!("could not clean up: {e:?}");
+    }
+    app_ctx.shutdown();
+}
+
+/// Build and run the application on an already-seeded context.
+pub fn run_with(app_ctx: Rc<AppContext>) {
     // Background dispatch thread. It exits when `AppContext::shutdown` drops the
     // shutdown sender.
     let client = EventHubClient::new(&app_ctx.event_hub);

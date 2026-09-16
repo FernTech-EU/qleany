@@ -1,8 +1,9 @@
-use crate::app_context::AppContext;
 use crate::cli_handlers;
+use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use frontend::AppContext;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::rc::Rc;
 
 #[derive(Parser)]
 #[command(author, version)]
@@ -62,7 +63,7 @@ pub enum Commands {
     /// Show unified diff between generated and on-disk file
     Diff(DiffArgs),
 
-    /// Run Slint GUI to edit manifests
+    /// Open the manifest editor
     Gui,
 }
 
@@ -482,7 +483,7 @@ pub struct DiffArgs {
 
 /// Run the CLI with the given application context.
 /// Returns `Some(())` if the application should continue running as GUI, `None` otherwise.
-pub fn run_cli(app_context: &Arc<AppContext>) -> Option<()> {
+pub fn run_cli(app_context: &Rc<AppContext>) -> Option<()> {
     let cli = Cli::parse();
 
     // No command provided → launch GUI
@@ -493,13 +494,15 @@ pub fn run_cli(app_context: &Arc<AppContext>) -> Option<()> {
         None => return Some(()),
     };
 
-    // Resolve manifest path for commands that need it
-    let manifest_path = resolve_manifest_path(&cli.manifest, &command);
-
     // Create output context for consistent messaging
     let output = OutputContext {
         verbose: cli.verbose,
         quiet: cli.quiet,
+    };
+
+    let manifest_path = match resolve_manifest_path(&cli.manifest, &command) {
+        Ok(path) => path,
+        Err(e) => return report(&output, Err(e)),
     };
 
     let result = match command {
@@ -509,90 +512,120 @@ pub fn run_cli(app_context: &Arc<AppContext>) -> Option<()> {
                 cli_handlers::check::list_rules(&output);
                 return None;
             }
-            let path = manifest_path.expect("Check requires a manifest");
-            cli_handlers::check::execute(app_context, &path, &output)
+            match manifest_path {
+                Some(path) => cli_handlers::check::execute(app_context, &path, &output),
+                None => Err(needs_manifest("Check")),
+            }
         }
-        Commands::List(args) => {
-            let path = manifest_path.expect("List requires a manifest");
-            cli_handlers::list::execute(app_context, &path, &args, &output)
-        }
-        Commands::Generate(args) => {
-            let path = manifest_path.expect("Generate requires a manifest");
-            cli_handlers::generate::execute(app_context, &path, &args, &output)
-        }
-        Commands::Show(args) => {
-            let path = manifest_path.expect("Show requires a manifest");
-            cli_handlers::show::execute(app_context, &path, &args, &output)
-        }
-        Commands::Export(args) => {
-            let path = manifest_path.expect("Export requires a manifest");
-            cli_handlers::export::execute(app_context, &path, &args, &output)
-        }
+        Commands::List(args) => match manifest_path {
+            Some(path) => cli_handlers::list::execute(app_context, &path, &args, &output),
+            None => Err(needs_manifest("List")),
+        },
+        Commands::Generate(args) => match manifest_path {
+            Some(path) => cli_handlers::generate::execute(app_context, &path, &args, &output),
+            None => Err(needs_manifest("Generate")),
+        },
+        Commands::Show(args) => match manifest_path {
+            Some(path) => cli_handlers::show::execute(app_context, &path, &args, &output),
+            None => Err(needs_manifest("Show")),
+        },
+        Commands::Export(args) => match manifest_path {
+            Some(path) => cli_handlers::export::execute(app_context, &path, &args, &output),
+            None => Err(needs_manifest("Export")),
+        },
         Commands::Docs(args) => cli_handlers::docs::execute(app_context, &args, &output),
-        Commands::Upgrade => {
-            let path = manifest_path.expect("Upgrade requires a manifest");
-            cli_handlers::upgrade::execute(app_context, &path, &output)
-        }
-        Commands::Prompt(args) => {
-            let path = manifest_path.expect("Prompt requires a manifest");
-            cli_handlers::prompt::execute(app_context, &path, &args, &output)
-        }
-        Commands::Diff(args) => {
-            let path = manifest_path.expect("Diff requires a manifest");
-            cli_handlers::diff::execute(app_context, &path, &args, &output)
-        }
+        Commands::Upgrade => match manifest_path {
+            Some(path) => cli_handlers::upgrade::execute(app_context, &path, &output),
+            None => Err(needs_manifest("Upgrade")),
+        },
+        Commands::Prompt(args) => match manifest_path {
+            Some(path) => cli_handlers::prompt::execute(app_context, &path, &args, &output),
+            None => Err(needs_manifest("Prompt")),
+        },
+        Commands::Diff(args) => match manifest_path {
+            Some(path) => cli_handlers::diff::execute(app_context, &path, &args, &output),
+            None => Err(needs_manifest("Diff")),
+        },
         Commands::Demo(args) => cli_handlers::demo::execute(app_context, &args, &output),
         Commands::Gui => return Some(()),
     };
 
+    report(&output, result)
+}
+
+/// Report a command's outcome and say the process is done.
+///
+/// A non-zero exit still goes through `process::exit`, because a CLI has to set
+/// its status code and there is nothing left to unwind. It happens here, at the
+/// end, rather than from inside path resolution, so everything that ran has
+/// already finished.
+fn report(output: &OutputContext, result: Result<()>) -> Option<()> {
     if let Err(e) = result {
         if !output.quiet {
             eprintln!("Error: {}", e);
         }
         std::process::exit(1);
     }
-
     None
 }
 
+/// The error a subcommand gives when it was handed no manifest.
+///
+/// These were eight `expect("X requires a manifest")` calls, so running
+/// `qleany list` in the wrong directory printed a panic and a backtrace. A
+/// missing argument is a thing the user can fix, and the message says how.
+fn needs_manifest(command: &str) -> anyhow::Error {
+    anyhow::anyhow!(
+        "{command} needs a manifest. Pass one with --manifest <path>, or run from a \
+         directory that holds a qleany.yaml."
+    )
+}
+
 /// Resolves the manifest path from CLI arguments or discovers it in the current directory.
-fn resolve_manifest_path(explicit: &Option<PathBuf>, command: &Commands) -> Option<PathBuf> {
-    // New, Demo, and Doc commands don't need an existing manifest
+/// Work out which manifest a command should act on.
+///
+/// `Ok(None)` means there is none, either because the command does not need one
+/// or because none was found; the calling arm turns that into
+/// [`needs_manifest`]. `Err` is reserved for a path the user named explicitly
+/// that is not there, which is a different mistake and deserves to say so.
+///
+/// This used to print and call `std::process::exit(1)` from here, which made the
+/// eight `expect("X requires a manifest")` calls in the match below unreachable.
+/// It also skipped the shutdown that `entry` now runs, so a mistyped `--manifest`
+/// left the background dispatch thread to be killed rather than told.
+fn resolve_manifest_path(
+    explicit: &Option<PathBuf>,
+    command: &Commands,
+) -> Result<Option<PathBuf>> {
+    // New, Demo and Docs create or read something other than an open manifest.
     if matches!(
         command,
         Commands::New(_) | Commands::Demo(_) | Commands::Docs(_)
     ) {
-        return None;
+        return Ok(None);
     }
 
-    // Use explicit path if provided
     if let Some(path) = explicit {
         if path.is_file() {
-            return Some(path.clone());
+            return Ok(Some(path.clone()));
         }
         if path.is_dir() {
             let manifest = path.join("qleany.yaml");
             if manifest.exists() {
-                return Some(manifest);
+                return Ok(Some(manifest));
             }
         }
-        eprintln!("Manifest not found: {}", path.display());
-        std::process::exit(1);
+        anyhow::bail!("Manifest not found: {}", path.display());
     }
 
-    // Search current directory
     let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let candidates = ["qleany.yaml", "qleany.yml"];
-
-    for candidate in candidates {
+    for candidate in ["qleany.yaml", "qleany.yml"] {
         let path = current_dir.join(candidate);
         if path.exists() {
-            return Some(path);
+            return Ok(Some(path));
         }
     }
-
-    eprintln!("No qleany.yaml found in current directory. Use --manifest to specify location.");
-    std::process::exit(1);
+    Ok(None)
 }
 
 /// Context for controlling CLI output behavior.

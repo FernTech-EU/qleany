@@ -23,6 +23,12 @@ Restoring it is `git checkout -- Cargo.lock`, and it will happen again on the
 next local build. That is the cost of the patch, and it is paid until the
 framework is published and the patch is deleted.
 
+Which is why this checks what is COMMITTED and what is STAGED, not what is in
+the working tree. Inside a checkout with the patch active the working copy is
+expected to be rewritten, and failing on that would make the gate unpassable and
+therefore ignored. In CI the tree is clean, so HEAD is what is being tested
+anyway. What must never be true is that a broken lockfile is recorded in git.
+
 Run from anywhere:  python3 tools/check_lockfile_is_portable.py [lockfile ...]
 Exit 0 when every path-resolved entry is a workspace member, 1 otherwise.
 """
@@ -63,18 +69,71 @@ def members(manifest_dir):
     return {p["name"] for p in json.loads(out)["packages"]}
 
 
-def offenders(lockfile):
-    """Path-resolved entries that are not members of that lockfile's workspace."""
-    text = lockfile.read_text(encoding="utf-8", errors="replace")
-    own = members(lockfile.parent)
-    if own is None:
-        return None
-    found = []
+def recorded(lockfile):
+    """The committed and staged copies, as (label, text) pairs.
+
+    Falls back to the file on disk when this is not a git checkout, which is what
+    a published `.crate` or a downloaded tarball looks like.
+    """
+    rel = lockfile.relative_to(REPO) if lockfile.is_relative_to(REPO) else lockfile
+    out = []
+    for label, rev in (("committed", "HEAD"), ("staged", "")):
+        try:
+            got = subprocess.run(
+                ["git", "show", f"{rev}:{rel.as_posix()}"] if rev
+                else ["git", "show", f":{rel.as_posix()}"],
+                cwd=REPO, capture_output=True, text=True, check=True,
+            ).stdout
+        except (OSError, subprocess.CalledProcessError):
+            continue
+        out.append((label, got))
+    if not out:
+        out.append(("on disk", lockfile.read_text(encoding="utf-8", errors="replace")))
+    # The staged copy usually equals the committed one; report each state once.
+    seen, unique = set(), []
+    for label, text in out:
+        if text in seen:
+            continue
+        seen.add(text)
+        unique.append((label, text))
+    return unique
+
+
+def path_resolved(text):
+    """Every entry in a lockfile that has no `source`, by name."""
+    out = []
     for block in PACKAGE.split(text)[1:]:
         name = NAME.search(block)
-        if name and not SOURCE.search(block) and name.group(1) not in own:
-            found.append(name.group(1))
-    return sorted(set(found))
+        if name and not SOURCE.search(block):
+            out.append(name.group(1))
+    return set(out)
+
+
+def offenders(text, lockfile):
+    """Path-resolved entries that should not be.
+
+    Preferred rule: anything path-resolved that is not a member of that
+    lockfile's workspace. When the members cannot be read, which is the normal
+    state of the generated example workspace after a cleanup, fall back to
+    comparing against the committed copy: a crate that was registry-resolved
+    there and is path-resolved here has just been rewritten by the local patch,
+    whatever the workspace turns out to contain. That fallback is narrower, but
+    it catches the failure this guard exists for without needing cargo.
+    """
+    here = path_resolved(text)
+    own = members(lockfile.parent)
+    if own is not None:
+        return sorted(here - own)
+
+    rel = lockfile.relative_to(REPO) if lockfile.is_relative_to(REPO) else lockfile
+    try:
+        head = subprocess.run(
+            ["git", "show", f"HEAD:{rel.as_posix()}"],
+            cwd=REPO, capture_output=True, text=True, check=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return sorted(here - path_resolved(head))
 
 
 def main(argv):
@@ -86,23 +145,25 @@ def main(argv):
             print(f"{target}: missing", file=sys.stderr)
             bad = True
             continue
-        found = offenders(path)
-        if found is None:
-            print(f"{target}: skipped, its workspace members are not on disk")
-            continue
-        if found:
+        rel = path.relative_to(REPO) if path.is_relative_to(REPO) else path
+        for label, text in recorded(path):
+            found = offenders(text, path)
+            if found is None:
+                print(f"{rel}: skipped, its workspace members are not on disk")
+                break
+            if not found:
+                continue
             bad = True
-            rel = path.relative_to(REPO) if path.is_relative_to(REPO) else path
-            print(f"{rel}: {len(found)} third-party crate(s) pinned to a local path:")
+            print(f"{rel} ({label}): {len(found)} third-party crate(s) pinned to a local path:")
             for name in found:
                 print(f"    {name}")
             print("    This lockfile cannot resolve on any other machine.")
-            print(f"    Fix: git checkout -- {rel}")
+            print(f"    Fix: git checkout -- {rel} && git add {rel}")
             print("    Cause: the [patch.crates-io] in .cargo/config.toml, which")
             print("    rewrites the lockfile on every cargo invocation.")
     if bad:
         return 1
-    print("Lockfiles are portable: every path-resolved entry is a workspace member.")
+    print("Lockfiles are portable: nothing recorded in git names a local path.")
     return 0
 
 

@@ -5,6 +5,7 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use teksilo::platform::file_dialog::{FileDialogRequest, FileDialogResult};
 use teksilo::prelude::*;
@@ -50,6 +51,15 @@ const DIRTYING_ENTITIES: &[DirectAccessEntity] = &[
     DirectAccessEntity::Relationship(EntityEvent::Removed),
 ];
 
+/// How long to wait for a load's own burst to *start* arriving.
+///
+/// Not a window during which edits are ignored: that would swallow a real one.
+/// It bounds only the gap between the command returning and the first event
+/// reaching this thread, after which a quiet frame means the burst is over. A
+/// load that genuinely publishes nothing ends its settle here instead of waiting
+/// for an event that is never coming.
+const SETTLE_START_GRACE: Duration = Duration::from_millis(250);
+
 #[derive(Clone)]
 pub struct ManifestViewModel {
     app_ctx: Rc<AppContext>,
@@ -66,6 +76,16 @@ pub struct ManifestViewModel {
     /// the burst goes quiet. See `wire` for why this cannot simply be a flag set
     /// before the command and cleared after it.
     settling_clean: Rc<Cell<bool>>,
+    /// When to give up waiting for the current settle's burst to begin.
+    ///
+    /// A quiet frame alone is not proof a burst is over, because it may not have
+    /// started: the events are delivered by a background thread, so a frame can
+    /// slip between the operation returning and its first event arriving. Ending
+    /// the settle there let the rest of the burst read as user edits, and marked
+    /// a manifest dirty immediately after it had been closed.
+    settling_until: Rc<Cell<Option<Instant>>>,
+    /// Whether the current settle has seen any event yet.
+    settle_saw_any: Rc<Cell<bool>>,
 }
 
 impl std::fmt::Debug for ManifestViewModel {
@@ -90,6 +110,8 @@ impl ManifestViewModel {
             success: Signal::new(None),
             saw_edit: Rc::new(Cell::new(false)),
             settling_clean: Rc::new(Cell::new(false)),
+            settling_until: Rc::new(Cell::new(None)),
+            settle_saw_any: Rc::new(Cell::new(false)),
         }
     }
 
@@ -284,7 +306,17 @@ impl ManifestViewModel {
 
         let tick = ctx.frame_tick();
         let me = self.clone();
-        ctx.effect(&tick, move |_| me.settle_dirty());
+        let settle_wake = wake.clone();
+        ctx.effect(&tick, move |_| {
+            me.settle_dirty();
+            // Keep the window awake to the end of the settle. Teksilo pumps a
+            // frame only when something asks for one, and once the burst stops
+            // arriving nothing else would, so the settle would never be closed
+            // out and the next real edit would be swallowed by it.
+            if let Some(until) = me.settling_until.get() {
+                settle_wake.set(Some(until));
+            }
+        });
     }
 
     /// One frame's worth of the dirty state machine.
@@ -293,16 +325,46 @@ impl ManifestViewModel {
     /// interesting property is the ordering, and no test can make real events
     /// arrive in a chosen order.
     pub(crate) fn settle_dirty(&self) {
+        self.settle_dirty_at(Instant::now());
+    }
+
+    /// One frame's worth, against a clock the caller supplies.
+    ///
+    /// Split from [`Self::settle_dirty`] so a test can drive the window without
+    /// sleeping: the interesting property is an ordering against a deadline, and
+    /// no test can make real events arrive at a chosen moment.
+    pub(crate) fn settle_dirty_at(&self, now: Instant) {
+        let settling = self.settling_clean.get();
+
         if self.saw_edit.replace(false) {
-            if self.settling_clean.get() {
-                // Still draining a load or a close. Stay clean, keep waiting.
+            if settling {
+                // The burst is under way, so a quiet frame from here on means it
+                // is over rather than that it has not begun.
+                self.settle_saw_any.set(true);
+                return;
+            }
+            // Nothing is open, so nothing can have been edited: this is the tail
+            // of a close's own removal burst, arriving after its settle ended.
+            if !self.is_open.get() {
                 return;
             }
             self.is_saved.set_if_changed(false);
-        } else if self.settling_clean.replace(false) {
-            // A frame with no edit: the burst has drained.
-            self.is_saved.set_if_changed(true);
+            return;
         }
+
+        if !settling {
+            return;
+        }
+        // A quiet frame. If nothing has arrived yet the burst has not started,
+        // so wait, but not forever.
+        if !self.settle_saw_any.get() && self.settling_until.get().is_some_and(|until| now < until)
+        {
+            return;
+        }
+        self.settling_clean.set(false);
+        self.settling_until.set(None);
+        self.settle_saw_any.set(false);
+        self.is_saved.set_if_changed(true);
     }
 
     // ── internals ────────────────────────────────────────────────────────────
@@ -368,6 +430,9 @@ impl ManifestViewModel {
     /// event, which is robust however many frames the burst spans.
     fn begin_settling_clean(&self) {
         self.settling_clean.set(true);
+        self.settling_until
+            .set(Some(Instant::now() + SETTLE_START_GRACE));
+        self.settle_saw_any.set(false);
         self.saw_edit.set(false);
         self.is_saved.set(true);
     }
@@ -401,34 +466,79 @@ mod tests {
     #[test]
     fn a_load_stays_clean_through_the_burst_it_causes() {
         let vm = vm();
+        vm.is_open.set(true);
         vm.begin_settling_clean();
         assert!(vm.is_saved().get());
+        let start = Instant::now();
 
-        // Three frames of burst.
+        // Three frames of burst, all inside the window.
         for _ in 0..3 {
             vm.saw_edit.set(true);
-            vm.settle_dirty();
+            vm.settle_dirty_at(start);
             assert!(
                 vm.is_saved().get(),
                 "an event from the load itself must not mark the manifest dirty"
             );
         }
 
-        // A quiet frame ends it.
-        vm.settle_dirty();
+        // The burst has been seen, so the next quiet frame ends it.
+        vm.settle_dirty_at(start);
         assert!(vm.is_saved().get());
         assert!(!vm.settling_clean.get(), "the settle should be over");
+    }
+
+    /// The bug this window exists for.
+    ///
+    /// A close returns, a frame goes by with the removal burst still in flight,
+    /// and only then do the events arrive. With the settle ended by that first
+    /// quiet frame, the burst read as user edits and the title bar offered to
+    /// save a manifest that had just been closed.
+    #[test]
+    fn a_burst_that_arrives_late_still_does_not_dirty() {
+        let vm = vm();
+        vm.is_open.set(true);
+        vm.begin_settling_clean();
+        let start = Instant::now();
+
+        // A quiet frame first: the events have not been delivered yet.
+        vm.settle_dirty_at(start);
+
+        // Now the burst lands.
+        for _ in 0..3 {
+            vm.saw_edit.set(true);
+            vm.settle_dirty_at(start);
+        }
+        assert!(
+            vm.is_saved().get(),
+            "a burst that arrived after the first quiet frame is still the load's"
+        );
+    }
+
+    /// An event with nothing open cannot be an edit, whatever the window says.
+    #[test]
+    fn an_event_with_no_manifest_open_is_never_an_edit() {
+        let vm = vm();
+        vm.is_open.set(false);
+        // No settle in flight at all: this is the tail of a close whose window
+        // has already closed out.
+        vm.saw_edit.set(true);
+        vm.settle_dirty_at(Instant::now());
+        assert!(vm.is_saved().get());
     }
 
     /// Once the burst has drained, a real edit dirties as usual.
     #[test]
     fn an_edit_after_the_burst_marks_the_manifest_dirty() {
         let vm = vm();
+        vm.is_open.set(true);
         vm.begin_settling_clean();
-        vm.settle_dirty(); // quiet frame ends the settle
+        let start = Instant::now();
+        // Nothing ever arrived, so the grace period ends the settle.
+        vm.settle_dirty_at(start + SETTLE_START_GRACE);
+        assert!(!vm.settling_clean.get());
 
         vm.saw_edit.set(true);
-        vm.settle_dirty();
+        vm.settle_dirty_at(start + SETTLE_START_GRACE);
         assert!(!vm.is_saved().get());
     }
 
@@ -436,6 +546,7 @@ mod tests {
     #[test]
     fn an_edit_with_no_load_in_flight_dirties_at_once() {
         let vm = vm();
+        vm.is_open.set(true);
         assert!(vm.is_saved().get());
         vm.saw_edit.set(true);
         vm.settle_dirty();
@@ -446,6 +557,8 @@ mod tests {
     #[test]
     fn a_quiet_frame_with_no_settle_pending_is_inert() {
         let vm = vm();
+        // An edit is only an edit when there is something open to edit.
+        vm.is_open.set(true);
         vm.saw_edit.set(true);
         vm.settle_dirty();
         assert!(!vm.is_saved().get());

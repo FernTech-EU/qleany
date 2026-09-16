@@ -20,8 +20,11 @@ publish = false
 name = "teksilo_ui"
 path = "src/lib.rs"
 
+# The `qleany` command is this crate's from step 2 of the port. The name moved
+# with the CLI, so `qleany gen` keeps working and none of the call sites in
+# run_tests.sh or integration.yml had to move with it.
 [[bin]]
-name = "qleany-teksilo"
+name = "qleany"
 path = "src/main.rs"
 
 [features]
@@ -44,6 +47,29 @@ frontend = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+
+# The CLI calls the backend controllers directly rather than through `frontend`,
+# which is one fewer indirection for a layer that has no reactivity to keep in
+# step. `common` comes with them for `OperationStatus` and the relationship-field
+# enums.
+common = { workspace = true }
+direct_access = { workspace = true }
+handling_manifest = { workspace = true }
+rust_file_generation = { workspace = true }
+cpp_qt_file_generation = { workspace = true }
+file_generation_shared_steps = { workspace = true }
+
+# The CLI surface itself, and the formats it reads and writes: `qleany show`
+# renders JSON and YAML, `qleany docs` renders Markdown to a terminal.
+clap = { version = "4.5", features = ["derive"] }
+serde_json = "1.0.149"
+serde_yml = "0.0.12"
+termimad = "0.34.1"
+
+# `qleany docs` serves the book out of the binary, so docs/ is compiled in. The
+# `docs` symlink beside this manifest is what makes that work inside a published
+# .crate, which contains nothing above its own package directory.
+include_dir = "0.7"
 
 log = "0.4"
 env_logger = "0.11"

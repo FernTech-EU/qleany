@@ -1,18 +1,14 @@
-use crate::app_context::AppContext;
 use crate::cli::{LanguageOption, ManifestTemplateOption, NewArgs, OutputContext};
 use crate::cli_handlers::common::{prompt_language, require_interactive};
 use anyhow::{Result, bail};
+use frontend::AppContext;
 use handling_manifest::{
     CreateDto, CreateLanguage, ManifestTemplate, handling_manifest_controller,
 };
 use std::io::{self, Write};
-use std::sync::Arc;
+use std::rc::Rc;
 
-pub fn execute(
-    app_context: &Arc<AppContext>,
-    args: &NewArgs,
-    output: &OutputContext,
-) -> Result<()> {
+pub fn execute(app_context: &Rc<AppContext>, args: &NewArgs, output: &OutputContext) -> Result<()> {
     let manifest_path = args.path.join("qleany.yaml");
 
     // Check for existing manifest

@@ -14,8 +14,11 @@ members = [
     "crates/macros",
     "crates/naming",
 ]
+# A bare `cargo build` builds the application that ships. That is the Teksilo UI
+# from step 2 onwards; the Slint crate is built explicitly with `-p qleany` for
+# as long as it is still here.
 default-members = [
-    "crates/slint_ui",
+    "crates/teksilo_ui",
 ]
 
 resolver = "3"

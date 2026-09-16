@@ -1,25 +1,22 @@
-use crate::app_context::AppContext;
 use crate::cli::{DemoArgs, LanguageOption, OutputContext};
-use crate::cli_handlers::common::{TargetLanguage, prompt_language, run_checks};
+use crate::cli_handlers::common::{TargetLanguage, prompt_language, run_checks, system_id};
 use anyhow::{Result, bail};
 use common::direct_access::system::SystemRelationshipField;
 use common::long_operation::OperationStatus;
 use cpp_qt_file_generation::cpp_qt_file_generation_controller;
 use direct_access::{FileDto, file_controller, system_controller};
 use file_generation_shared_steps::file_generation_shared_steps_controller;
+use frontend::AppContext;
 use handling_manifest::{
     CreateDto, CreateLanguage, ManifestTemplate, handling_manifest_controller,
 };
 use rust_file_generation::rust_file_generation_controller;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
 
-/// The root system entity ID (singleton in the database)
-const ROOT_SYSTEM_ID: u64 = 1;
-
 pub fn execute(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     args: &DemoArgs,
     output: &OutputContext,
 ) -> Result<()> {
@@ -147,7 +144,7 @@ pub fn execute(
     // Step 4: Retrieve all files
     let file_ids = system_controller::get_relationship(
         &app_context.db_context,
-        &ROOT_SYSTEM_ID,
+        &system_id(app_context)?,
         &SystemRelationshipField::Files,
     )?;
 
@@ -247,7 +244,7 @@ pub fn execute(
 
 /// Polls a long operation until it completes, reporting progress if verbose.
 fn poll_long_operation(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     operation_id: &str,
     output: &OutputContext,
 ) -> Result<()> {

@@ -1,7 +1,7 @@
-use crate::app_context::AppContext;
 use crate::cli::{DocsArgs, DocsTarget, OutputContext};
+use frontend::AppContext;
 use include_dir::{Dir, include_dir};
-use std::sync::Arc;
+use std::rc::Rc;
 
 static DOCS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/docs/");
 
@@ -18,7 +18,7 @@ fn print_md(content: &str, raw: bool) {
 }
 
 pub fn execute(
-    _app_context: &Arc<AppContext>,
+    _app_context: &Rc<AppContext>,
     args: &DocsArgs,
     output: &OutputContext,
 ) -> anyhow::Result<()> {

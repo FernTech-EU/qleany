@@ -1,13 +1,13 @@
-use crate::app_context::AppContext;
 use crate::cli::{ExportArgs, ExportFormat, OutputContext};
 use crate::cli_handlers::common::run_checks;
 use anyhow::Result;
+use frontend::AppContext;
 use handling_manifest::handling_manifest_controller;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 pub fn execute(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     manifest_path: &Path,
     args: &ExportArgs,
     output: &OutputContext,
@@ -37,7 +37,7 @@ pub fn execute(
     Ok(())
 }
 
-fn export_mermaid(app_context: &Arc<AppContext>) -> Result<String> {
+fn export_mermaid(app_context: &Rc<AppContext>) -> Result<String> {
     let result = handling_manifest_controller::export_to_mermaid(
         &app_context.db_context,
         &app_context.event_hub,

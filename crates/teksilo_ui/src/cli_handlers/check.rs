@@ -1,13 +1,13 @@
-use crate::app_context::AppContext;
 use crate::cli::OutputContext;
 use crate::cli_handlers::common::run_checks;
 use anyhow::Result;
+use frontend::AppContext;
 use handling_manifest::handling_manifest_controller;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 pub fn execute(
-    app_context: &Arc<AppContext>,
+    app_context: &Rc<AppContext>,
     manifest_path: &Path,
     output: &OutputContext,
 ) -> Result<()> {
