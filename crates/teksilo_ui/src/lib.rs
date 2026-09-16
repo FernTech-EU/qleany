@@ -35,6 +35,7 @@ pub mod home;
 pub mod icons;
 pub mod intents;
 pub mod manifest;
+pub mod new_manifest;
 pub mod project;
 pub mod settings_keys;
 pub mod shared;

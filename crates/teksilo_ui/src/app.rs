@@ -17,6 +17,7 @@ use crate::features::{DtoSide, DtoViewModel, FeaturesPage, FeaturesViewModel, Us
 use crate::generate::{GeneratePage, GenerateViewModel};
 use crate::home::{self, HomeViewModel};
 use crate::manifest::ManifestViewModel;
+use crate::new_manifest::NewManifestViewModel;
 use crate::project::{ProjectPage, ProjectViewModel};
 use crate::session::Session;
 use crate::shell::menus::MenuParts;
@@ -43,6 +44,7 @@ pub struct App {
     dto_in: DtoViewModel,
     dto_out: DtoViewModel,
     generate: GenerateViewModel,
+    new_manifest: NewManifestViewModel,
     root_child: Option<WidgetId>,
 }
 
@@ -117,6 +119,7 @@ impl App {
             use_cases.selected(),
             use_cases.name(),
         );
+        let app_ctx_for_wizard = session.app_ctx.clone();
         let generate = GenerateViewModel::new(
             session.app_ctx.clone(),
             ids.clone(),
@@ -139,6 +142,7 @@ impl App {
             dto_in,
             dto_out,
             generate,
+            new_manifest: NewManifestViewModel::new(app_ctx_for_wizard),
             root_child: None,
         }
     }
@@ -216,6 +220,7 @@ impl Widget for App {
                 manifest: self.manifest.clone(),
                 entities: self.entities.clone(),
                 undo: self.undo.clone(),
+                new_manifest: self.new_manifest.clone(),
             },
         );
 

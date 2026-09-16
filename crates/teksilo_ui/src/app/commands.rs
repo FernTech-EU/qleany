@@ -14,6 +14,7 @@ use crate::edit::UndoViewModel;
 use crate::entities::EntitiesViewModel;
 use crate::intents::name;
 use crate::manifest::ManifestViewModel;
+use crate::new_manifest::{self, NewManifestViewModel};
 use crate::shell::menus::MenuParts;
 
 /// The handles the actions need. Threaded in rather than looked up, because
@@ -24,6 +25,7 @@ pub struct CommandDeps {
     pub manifest: ManifestViewModel,
     pub entities: EntitiesViewModel,
     pub undo: UndoViewModel,
+    pub new_manifest: NewManifestViewModel,
 }
 
 /// Register everything. Called from `App::build`, on every build: an action
@@ -90,6 +92,13 @@ fn register_entities(ctx: &mut BuildContext, deps: &CommandDeps) {
 fn register_manifest(ctx: &mut BuildContext, deps: &CommandDeps) {
     let open = deps.parts.manifest_open.clone();
     let can_save = deps.parts.can_save.clone();
+
+    let wizard = deps.new_manifest.clone();
+    let wizard_manifest = deps.manifest.clone();
+    ctx.register_action_global(
+        Action::new(name::NEW_MANIFEST)
+            .on_invoke(move |_i, c| new_manifest::present(&wizard, &wizard_manifest, c)),
+    );
 
     let vm = deps.manifest.clone();
     ctx.register_action_global(

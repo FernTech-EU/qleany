@@ -348,6 +348,38 @@ undo-reorder-dto-fields = reorder DTO fields
 undo-edit-dto-field = edit DTO field
 undo-edit-user-interface = edit user interface targets
 
+## New manifest wizard
+
+wizard-title = New manifest
+wizard-step-language = Language
+wizard-step-names = Names
+wizard-step-template = Template
+wizard-step-targets = User interfaces
+wizard-back = Back
+wizard-next = Next
+wizard-create = Create
+wizard-cancel = Cancel
+wizard-required = Required
+wizard-must-be-pascal-case = Must be PascalCase
+wizard-language-rust = Rust
+wizard-language-rust-blurb = 2024 edition
+wizard-language-cpp-qt = C++ / Qt
+wizard-language-cpp-qt-blurb = C++ 20 and Qt 6
+wizard-application-name = Application name
+wizard-application-name-placeholder = MyApplication
+wizard-organisation-name = Organisation name
+wizard-organisation-name-placeholder = FernTech
+wizard-template-blank = Blank
+wizard-template-blank-blurb = Nothing but the project scaffolding.
+wizard-template-minimal = Minimal
+wizard-template-minimal-blurb = One entity and one feature, to build on.
+wizard-template-document-editor = Document editor
+wizard-template-document-editor-blurb = Documents, open and save, undo and redo.
+wizard-template-data-management = Data management
+wizard-template-data-management-blurb = Records, lists and forms over a store.
+wizard-targets-footnote = You can change these later on the User Interface screen.
+wizard-targets-cpp-note = The Qt targets need a Qt 6 installation and a git tag to build against.
+
 ## Shared
 
 common-cancel = Cancel
