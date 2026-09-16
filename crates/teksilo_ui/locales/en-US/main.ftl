@@ -285,6 +285,35 @@ check-tooltip-ok = The manifest validates
 check-tooltip-warning = The manifest has warnings
 check-tooltip-critical = The manifest has errors and will not generate
 
+## Generate screen
+
+generate-title = Generate
+generate-groups-heading = Groups
+generate-files-heading = Files
+generate-filter-placeholder = Filter by path or name
+generate-status-modified = Modified
+generate-status-new = New
+generate-status-unchanged = Unchanged
+generate-nature-infrastructure = Infra
+generate-nature-aggregate = Aggregate
+generate-nature-scaffold = Scaffold
+generate-select-all = Select all
+generate-unselect-all = Unselect all
+generate-in-temp = In temp/
+generate-view-diff = View diff
+generate-run = Generate ({ $count })
+generate-refresh = Recompute
+generate-cancel = Cancel
+generate-empty = No files match
+generate-empty-hint = Widen the filters, or pick another group.
+generate-no-selection = No file selected
+generate-no-selection-hint = Pick a file to see what would be written.
+generate-no-differences = No differences
+generate-step-rendering = Rendering the files this manifest implies
+generate-step-writing = Writing files
+generate-computing-title = Computing file status
+generate-generating-title = Generating files
+
 ## Shared
 
 common-cancel = Cancel

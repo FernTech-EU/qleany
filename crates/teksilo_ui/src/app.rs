@@ -4,15 +4,16 @@ pub mod commands;
 pub mod nav;
 
 use teksilo::prelude::*;
-use teksilo::widgets::{Expand, HStack, Switcher, TextWidget};
+use teksilo::widgets::{Expand, HStack, Switcher};
 
 use crate::app::commands::CommandDeps;
 use crate::app::nav::NavRail;
 
-use crate::app_ids::AppIds;
+use crate::app_ids::{AppIds, Screen};
 use crate::check::CheckViewModel;
 use crate::entities::{EntitiesPage, EntitiesViewModel, FieldViewModel};
 use crate::features::{DtoSide, DtoViewModel, FeaturesPage, FeaturesViewModel, UseCaseViewModel};
+use crate::generate::{GeneratePage, GenerateViewModel};
 use crate::home::{self, HomeViewModel};
 use crate::manifest::ManifestViewModel;
 use crate::project::{ProjectPage, ProjectViewModel};
@@ -39,6 +40,7 @@ pub struct App {
     use_cases: UseCaseViewModel,
     dto_in: DtoViewModel,
     dto_out: DtoViewModel,
+    generate: GenerateViewModel,
     root_child: Option<WidgetId>,
 }
 
@@ -107,6 +109,11 @@ impl App {
             use_cases.selected(),
             use_cases.name(),
         );
+        let generate = GenerateViewModel::new(
+            session.app_ctx.clone(),
+            ids.clone(),
+            session.system_files.clone(),
+        );
         Self {
             session,
             ids,
@@ -122,6 +129,7 @@ impl App {
             use_cases,
             dto_in,
             dto_out,
+            generate,
             root_child: None,
         }
     }
@@ -156,6 +164,30 @@ impl App {
     }
 }
 
+impl App {
+    /// Tell the Generate screen when it is entered and when it is left.
+    ///
+    /// Here rather than in the screen's own `build`, because a screen that is not
+    /// mounted does not build: the moment worth acting on is exactly the one where
+    /// the screen stops existing. Leaving cancels the long operation that renders
+    /// every file in the manifest, and releases the rendered bodies, which are the
+    /// largest thing this app holds.
+    fn follow_generate_screen(&self, ctx: &mut BuildContext) {
+        let generate = self.generate.clone();
+        let screen = self.ids.screen.clone();
+        ctx.effect(&screen, move |screen| {
+            if *screen == Screen::Generate {
+                generate.enter();
+            } else {
+                generate.leave();
+            }
+        });
+        if screen.get() == Screen::Generate {
+            self.generate.enter();
+        }
+    }
+}
+
 impl Widget for App {
     fn build(&mut self, ctx: &mut BuildContext) -> Vec<WidgetId> {
         // Every generated handle re-subscribes on every build: a `BuildContext`
@@ -163,6 +195,7 @@ impl Widget for App {
         // the whole app deaf after its first rebuild.
         self.session.wire_all(ctx);
         self.point_workspace_lists(ctx);
+        self.follow_generate_screen(ctx);
         self.manifest.wire(ctx);
         self.check.wire(ctx);
         commands::register(
@@ -198,7 +231,7 @@ impl Widget for App {
                 self.dto_out.clone(),
             ))
             .child(UserInterfacePage::new(self.user_interface.clone()))
-            .child(TextWidget::new(tr!(nav_generate())));
+            .child(GeneratePage::new(self.generate.clone()));
 
         let id = ctx.add(teksu!(
             HStack {

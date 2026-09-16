@@ -29,6 +29,7 @@ pub mod bootstrap;
 pub mod check;
 pub mod entities;
 pub mod features;
+pub mod generate;
 pub mod home;
 pub mod icons;
 pub mod intents;

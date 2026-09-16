@@ -4,7 +4,7 @@
 //! so those two live here and each screen states only its own content.
 
 use teksilo::prelude::*;
-use teksilo::widgets::{HStack, TextWidget};
+use teksilo::widgets::{Checkbox, HStack, TextWidget};
 
 /// A screen's heading.
 ///
@@ -38,4 +38,27 @@ pub fn required_field_label(text: LocalizedString) -> impl Widget {
                 .color(TextRole::Error)
                 .a11y_hidden(),
         )
+}
+
+/// A checkbox with its label beside it rather than inside it.
+///
+/// `Checkbox::label` puts the text inside the widget, where it shrinks before
+/// anything else does: in a row beside other controls it collapses to an ellipsis
+/// and the user is left with six identical boxes. The label is given to the
+/// checkbox as its accessible name and drawn separately, which is the same split
+/// every form on this screen already uses.
+pub fn inline_checkbox(
+    label: LocalizedString,
+    checked: Signal<bool>,
+    on_change: impl Fn(bool, &mut EventContext) + 'static,
+) -> impl Widget {
+    HStack::new()
+        .spacing(6.0)
+        .child(
+            Checkbox::new(checked)
+                .label(label.clone())
+                .labelled_externally()
+                .on_change(on_change),
+        )
+        .child(TextWidget::new(label).no_shrink())
 }
