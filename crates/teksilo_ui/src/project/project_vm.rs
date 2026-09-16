@@ -12,6 +12,7 @@ use teksilo::widgets::ValidationState;
 use frontend::EntityId;
 
 use crate::app_ids::AppIds;
+use crate::shared::validation::required;
 use crate::singles::SingleGlobal;
 
 /// The languages Qleany generates for.
@@ -70,21 +71,6 @@ impl Language {
             Language::CppQt => "src",
         }
     }
-}
-
-/// A required text field's validation state, derived from its own value.
-///
-/// Whitespace counts as empty: an application name of three spaces would pass a
-/// bare `is_empty` and then generate a project whose crate names begin with a
-/// space.
-fn required(value: &Signal<String>, message: LocalizedString) -> Signal<ValidationState> {
-    value.map(move |v| {
-        if v.trim().is_empty() {
-            ValidationState::Error(message.clone())
-        } else {
-            ValidationState::None
-        }
-    })
 }
 
 #[derive(Clone)]
@@ -239,6 +225,9 @@ impl ProjectViewModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::rc::Rc;
+
+    use frontend::AppContext;
 
     #[test]
     fn every_language_code_round_trips() {
@@ -263,18 +252,39 @@ mod tests {
         assert_eq!(Language::CppQt.default_prefix_path(), "src");
     }
 
-    /// Three spaces is an empty application name, not a valid one.
+    /// The rule itself belongs to `shared::validation`; what this pins is that the
+    /// screen wired each field to its own message rather than to one shared one.
     #[test]
-    fn a_required_field_rejects_whitespace() {
-        let value = Signal::new(String::new());
-        let state = required(&value, tr!(project_application_name_required()));
-        assert!(matches!(state.get(), ValidationState::Error(_)));
+    fn each_required_field_carries_its_own_message() {
+        let ids = AppIds::new();
+        let vm = ProjectViewModel::new(SingleGlobal::new(Rc::new(AppContext::new())), ids);
+        // Emptied rather than assumed empty: under `mocks` the handle starts with a
+        // fabricated row, and this test is about the messages, not about what a
+        // fresh handle happens to hold.
+        for field in [
+            vm.application_name(),
+            vm.organisation_name(),
+            vm.organisation_domain(),
+        ] {
+            field.set(String::new());
+        }
 
-        value.set("   ".to_string());
-        assert!(matches!(state.get(), ValidationState::Error(_)));
+        let messages: Vec<String> = [
+            vm.application_name_validation(),
+            vm.organisation_name_validation(),
+            vm.organisation_domain_validation(),
+        ]
+        .iter()
+        .map(|state| match state.get() {
+            ValidationState::Error(m) => m.resolve_now(),
+            other => panic!("an empty required field must be an error, got {other:?}"),
+        })
+        .collect();
 
-        value.set("Demo".to_string());
-        assert!(matches!(state.get(), ValidationState::None));
+        let mut unique = messages.clone();
+        unique.sort();
+        unique.dedup();
+        assert_eq!(unique.len(), 3, "two fields share a message: {messages:?}");
     }
 
     /// Everything below drives the real store.

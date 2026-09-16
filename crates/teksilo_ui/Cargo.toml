@@ -60,5 +60,11 @@ toml = "1.1"
 # would freeze the UI thread for seconds.
 open = "5.3"
 
+# Name validation. The same crate the Slint UI validates with, and the same rule:
+# a name is PascalCase when it is unchanged by being converted to PascalCase. That
+# keeps the UI's verdict identical to the generator's, which is what matters, since
+# the generator is what turns these names into type and file names.
+heck = "0.5"
+
 [lints]
 workspace = true
