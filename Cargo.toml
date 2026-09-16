@@ -10,6 +10,7 @@ members = [
     "crates/handling_app_lifecycle",
     "crates/file_generation_shared_steps",
     "crates/slint_ui",
+    "crates/teksilo_ui",
     "crates/macros",
     "crates/naming",
 ]
@@ -42,6 +43,24 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 chrono = { version = "0.4" , features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+
+# FernTech's own GUI framework, the toolkit crates/teksilo_ui is written in.
+#
+# Declared against crates.io so CI, `cargo publish` and the maturin wheel build
+# all resolve without a sibling checkout. Co-developing against an unreleased
+# teksilo is a LOCAL concern: put a `[patch.crates-io]` in an untracked
+# `.cargo/config.toml` pointing at ../teksilo/crates/teksilo. See CONTRIBUTING.
+#
+# `theme-fluent` is what makes `teksilo::presets::fluent::{light,dark}` exist.
+# `automation` installs the debug-only bridge the scripts/automation_*.py probes
+# attach to. `async-std` (not bare `async`) because bare `async` installs an
+# executor with NO reactor: it runs `spawn_blocking` futures fine and then hangs
+# silently the first time anything awaits a native future.
+teksilo = { version = "0.10.0", features = [
+    "theme-fluent",
+    "automation",
+    "async-std",
+] }
 
 # Internal crates
 common = { package = "qleany-common", version = "1.12.0", path = "crates/common" }

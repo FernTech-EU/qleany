@@ -195,3 +195,7 @@ tested_project
 .aider*
 .codeium/
 .continue/
+
+# Local co-development override for sibling crates (teksilo, text-document).
+# See CONTRIBUTING.md; never committed, so CI resolves from crates.io.
+.cargo/
