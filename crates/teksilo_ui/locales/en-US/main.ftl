@@ -314,6 +314,40 @@ generate-step-writing = Writing files
 generate-computing-title = Computing file status
 generate-generating-title = Generating files
 
+## Undo and redo
+
+undo-menu-plain = &Undo
+undo-menu-labelled = &Undo { $action }
+redo-menu-plain = &Redo
+redo-menu-labelled = &Redo { $action }
+undo-toast = Undone: { $action }
+redo-toast = Redone: { $action }
+undo-edit-project = project settings
+undo-add-entity = add entity
+undo-remove-entity = remove entity
+undo-reorder-entities = reorder entities
+undo-edit-entity = edit entity
+undo-add-field = add field
+undo-remove-field = remove field
+undo-reorder-fields = reorder fields
+undo-edit-field = edit field
+undo-add-feature = add feature
+undo-remove-feature = remove feature
+undo-reorder-features = reorder features
+undo-edit-feature = edit feature
+undo-add-use-case = add use case
+undo-remove-use-case = remove use case
+undo-reorder-use-cases = reorder use cases
+undo-edit-use-case = edit use case
+undo-enable-dto = enable DTO
+undo-disable-dto = delete DTO
+undo-edit-dto = edit DTO
+undo-add-dto-field = add DTO field
+undo-remove-dto-field = remove DTO field
+undo-reorder-dto-fields = reorder DTO fields
+undo-edit-dto-field = edit DTO field
+undo-edit-user-interface = edit user interface targets
+
 ## Shared
 
 common-cancel = Cancel

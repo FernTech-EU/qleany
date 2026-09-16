@@ -140,13 +140,11 @@ impl Widget for FeaturesPage {
 
 fn feature_column(vm: &FeaturesViewModel) -> impl Widget {
     let source = {
-        let list = vm.list();
-        let move_list = vm.list();
-        let stack = vm.stack_signal();
+        let reorder = vm.clone();
         ReorderableSource::new(
-            list.list_model(),
+            vm.list().list_model(),
             |row| row.id,
-            move |id, index| move_list.move_to(id, index, stack.get()),
+            move |id, index| reorder.reorder(id, index),
         )
     };
 
@@ -193,13 +191,11 @@ fn feature_column(vm: &FeaturesViewModel) -> impl Widget {
 
 fn use_case_column(vm: &UseCaseViewModel, features: &FeaturesViewModel) -> impl Widget {
     let source = {
-        let list = vm.list();
-        let move_list = vm.list();
-        let stack = vm.stack_signal();
+        let reorder = vm.clone();
         ReorderableSource::new(
-            list.list_model(),
+            vm.list().list_model(),
             |row| row.id,
-            move |id, index| move_list.move_to(id, index, stack.get()),
+            move |id, index| reorder.reorder(id, index),
         )
     };
 

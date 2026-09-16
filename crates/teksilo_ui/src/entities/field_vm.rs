@@ -17,12 +17,13 @@ use teksilo::widgets::ValidationState;
 
 use frontend::AppContext;
 use frontend::EntityId;
-use frontend::commands::{field_commands, undo_redo_commands};
+use frontend::commands::field_commands;
 use frontend::common::direct_access::field::FieldRelationshipField;
 use frontend::common::entities::{FieldRelationshipType, FieldType};
 use frontend::direct_access::{CreateFieldDto, FieldRelationshipDto};
 
 use crate::app_ids::AppIds;
+use crate::edit::{UndoAction, labeled};
 use crate::models::{EntityFieldsListModel, EntityFieldsRow};
 use crate::shared::settle::Settle;
 use crate::shared::validation::{is_snake_case, required_cased};
@@ -484,13 +485,20 @@ impl FieldViewModel {
             field_type: FieldType::String,
             ..Default::default()
         };
-        if let Some(id) = self.list.create(&dto, -1, self.stack()) {
+        let stack = self.stack();
+        let created = labeled(&self.app_ctx, stack, UndoAction::AddField, || {
+            self.list.create(&dto, -1, stack)
+        });
+        if let Some(id) = created {
             self.select(id);
         }
     }
 
     pub fn remove(&self, id: EntityId) {
-        self.list.remove(id, self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::RemoveField, || {
+            self.list.remove(id, stack)
+        });
         if self.selected_id() == Some(id) {
             self.selection.clear();
         }
@@ -502,7 +510,10 @@ impl FieldViewModel {
 
     /// Write the name back, on Enter or on blur.
     pub fn commit(&self) {
-        self.single.save(self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditField, || {
+            self.single.save(stack)
+        });
     }
 
     pub fn set_displayed_field(&self, value: &str) {
@@ -530,47 +541,40 @@ impl FieldViewModel {
         };
 
         // The referenced entity is a relationship, and the generated `save` writes
-        // scalars only, so a change that moves both is two backend calls. Bracketed
-        // so one Ctrl+Z takes back the whole rule rather than half of it, which
-        // would leave exactly the incoherent field the rule exists to prevent.
-        let composite = after.entity != before.entity && scalars_differ(&before, &after);
-        if composite
-            && let Err(e) = undo_redo_commands::begin_composite(&self.app_ctx, self.stack())
-        {
-            log::error!("could not start a composite edit: {e}");
-            return;
-        }
+        // scalars only, so a change that moves both is two backend calls. One named
+        // composite around the whole rule, unconditionally: a composite of a single
+        // write is still a single entry, and branching on whether one is needed was
+        // a condition to get wrong for nothing. One Ctrl+Z then takes the rule back
+        // entire rather than half of it, which would leave exactly the incoherent
+        // field the rule exists to prevent.
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditField, || {
+            self.single.set_field_type(after.field_type);
+            self.single.set_relationship(after.relationship);
+            self.single.set_optional(after.optional);
+            self.single.set_is_list(after.is_list);
+            self.single.set_strong(after.strong);
+            self.single.set_list_model(after.list_model);
+            self.single
+                .set_list_model_displayed_field(after.list_model_displayed_field.clone());
+            self.single.set_enum_name(after.enum_name.clone());
+            self.single.set_enum_values(after.enum_values.clone());
+            // `save`, not `commit`: the composite is already open and named.
+            self.single.save(stack);
 
-        self.single.set_field_type(after.field_type);
-        self.single.set_relationship(after.relationship);
-        self.single.set_optional(after.optional);
-        self.single.set_is_list(after.is_list);
-        self.single.set_strong(after.strong);
-        self.single.set_list_model(after.list_model);
-        self.single
-            .set_list_model_displayed_field(after.list_model_displayed_field.clone());
-        self.single.set_enum_name(after.enum_name.clone());
-        self.single.set_enum_values(after.enum_values.clone());
-        self.commit();
-
-        if after.entity != before.entity {
-            let dto = FieldRelationshipDto {
-                id,
-                field: FieldRelationshipField::Entity,
-                right_ids: after.entity.into_iter().collect(),
-            };
-            if let Err(e) =
-                field_commands::set_field_relationship(&self.app_ctx, self.stack(), &dto)
-            {
-                log::error!("could not set the referenced entity of field {id}: {e}");
-            } else {
-                self.single.refresh();
+            if after.entity != before.entity {
+                let dto = FieldRelationshipDto {
+                    id,
+                    field: FieldRelationshipField::Entity,
+                    right_ids: after.entity.into_iter().collect(),
+                };
+                if let Err(e) = field_commands::set_field_relationship(&self.app_ctx, stack, &dto) {
+                    log::error!("could not set the referenced entity of field {id}: {e}");
+                } else {
+                    self.single.refresh();
+                }
             }
-        }
-
-        if composite {
-            undo_redo_commands::end_composite(&self.app_ctx);
-        }
+        });
         self.list.refresh();
     }
 
@@ -686,32 +690,21 @@ impl FieldViewModel {
         self.selection.prune_missing(|id| live.contains(id));
     }
 
+    /// Move a row, as one named undo entry.
+    ///
+    /// Here rather than in the page: the reorder adapter outlives the frame that
+    /// built it, and what it needs is a command, not a model and a stack signal it
+    /// would have to name the operation from itself.
+    pub fn reorder(&self, id: EntityId, index: i32) {
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::ReorderFields, || {
+            self.list.move_to(id, index, stack)
+        });
+    }
+
     fn stack(&self) -> Option<u64> {
         self.ids.entities_stack.get()
     }
-
-    /// The screen's undo stack, for anything that has to read it later rather than
-    /// now. A reorder adapter outlives the frame that built it, so it captures this
-    /// signal rather than the value.
-    pub fn stack_signal(&self) -> Signal<Option<u64>> {
-        self.ids.entities_stack.clone()
-    }
-}
-
-/// Whether anything the scalar write covers actually changed.
-///
-/// A change that only moves the referenced entity needs no scalar write, and
-/// therefore no composite: one backend call is already atomic.
-fn scalars_differ(before: &FieldShape, after: &FieldShape) -> bool {
-    before.field_type != after.field_type
-        || before.relationship != after.relationship
-        || before.optional != after.optional
-        || before.is_list != after.is_list
-        || before.strong != after.strong
-        || before.list_model != after.list_model
-        || before.list_model_displayed_field != after.list_model_displayed_field
-        || before.enum_name != after.enum_name
-        || before.enum_values != after.enum_values
 }
 
 #[cfg(test)]
@@ -958,18 +951,5 @@ mod tests {
             relationship_name(&FieldRelationshipType::ManyToOne),
             "many_to_one"
         );
-    }
-
-    /// Only a relationship change needs no composite: one backend call is already
-    /// atomic, and wrapping it would push an empty composite onto the stack.
-    #[test]
-    fn a_change_that_moves_only_the_reference_needs_no_composite() {
-        let before = entity_field();
-        let after = before.clone().with_entity(Some(9));
-        assert!(!scalars_differ(&before, &after));
-
-        let both = before.clone().with_type(FieldType::String);
-        assert!(scalars_differ(&before, &both));
-        assert_ne!(both.entity, before.entity);
     }
 }

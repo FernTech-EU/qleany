@@ -314,6 +314,8 @@ impl ManifestViewModel {
     /// first, so reopening cannot leak one.
     fn open_undo_stacks(&self) {
         self.close_undo_stacks();
+        // Anything the manager still holds belonged to the manifest that closed.
+        undo_redo_commands::clear_all_stacks(&self.app_ctx);
         for stack in self.ids.stacks() {
             stack.set(Some(undo_redo_commands::create_new_stack(&self.app_ctx)));
         }

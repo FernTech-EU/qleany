@@ -10,6 +10,7 @@ use teksilo::core::BindingLevel;
 use teksilo::prelude::*;
 
 use crate::app_ids::{AppIds, Screen};
+use crate::edit::UndoViewModel;
 use crate::entities::EntitiesViewModel;
 use crate::intents::name;
 use crate::manifest::ManifestViewModel;
@@ -22,6 +23,7 @@ pub struct CommandDeps {
     pub parts: MenuParts,
     pub manifest: ManifestViewModel,
     pub entities: EntitiesViewModel,
+    pub undo: UndoViewModel,
 }
 
 /// Register everything. Called from `App::build`, on every build: an action
@@ -31,6 +33,43 @@ pub fn register(ctx: &mut BuildContext, deps: &CommandDeps) {
     register_theme(ctx, deps);
     register_manifest(ctx, deps);
     register_entities(ctx, deps);
+    register_undo(ctx, deps);
+}
+
+/// Undo and redo, on the active screen's stack.
+///
+/// Ctrl+Shift+Z as well as Ctrl+Y: the first is what a user coming from a Mac or
+/// from most Linux applications reaches for, the second what a user coming from
+/// Windows does, and a redo that only answers one of them reads as broken.
+fn register_undo(ctx: &mut BuildContext, deps: &CommandDeps) {
+    let vm = deps.undo.clone();
+    ctx.register_action_global(
+        Action::new(name::UNDO)
+            .enabled_when(deps.parts.can_undo.clone())
+            .on_invoke(move |_i, c| vm.undo(c)),
+    );
+    let vm = deps.undo.clone();
+    ctx.register_action_global(
+        Action::new(name::REDO)
+            .enabled_when(deps.parts.can_redo.clone())
+            .on_invoke(move |_i, c| vm.redo(c)),
+    );
+
+    ctx.register_shortcut_global(
+        Shortcut::new(name::UNDO)
+            .intent(name::UNDO)
+            .primary(KeyStroke::ctrl(Key::Character('z')))
+            .enabled_when(deps.parts.can_undo.clone())
+            .build(),
+    );
+    ctx.register_shortcut_global(
+        Shortcut::new(name::REDO)
+            .intent(name::REDO)
+            .primary(KeyStroke::ctrl_shift(Key::Character('z')))
+            .secondary(KeyStroke::ctrl(Key::Character('y')))
+            .enabled_when(deps.parts.can_redo.clone())
+            .build(),
+    );
 }
 
 /// The Mermaid export: the one entity action that is about the model as a whole

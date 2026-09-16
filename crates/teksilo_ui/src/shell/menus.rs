@@ -20,6 +20,11 @@ pub struct MenuParts {
     /// The active screen's undo stack has history.
     pub can_undo: Signal<bool>,
     pub can_redo: Signal<bool>,
+    /// What Undo and Redo would take back. A `LocalizedString` that observes the
+    /// stack rather than a `Signal`, because a menu model is built once and
+    /// `MenuEntry::new` takes its title by value.
+    pub undo_label: LocalizedString,
+    pub redo_label: LocalizedString,
     /// The resolved theme, so the two View rows can be a radio pair.
     pub dark: Signal<bool>,
     /// The manifest has at least one critical validation error, which is what puts
@@ -73,12 +78,12 @@ pub fn build_menu(parts: &MenuParts) -> MenuModel {
         })
         .menu(tr!(menu_edit()), |m| {
             m.item(
-                MenuEntry::new(tr!(menu_undo()))
+                MenuEntry::new(parts.undo_label.clone())
                     .intent(name::UNDO)
                     .enabled(parts.can_undo.clone()),
             )
             .item(
-                MenuEntry::new(tr!(menu_redo()))
+                MenuEntry::new(parts.redo_label.clone())
                     .intent(name::REDO)
                     .enabled(parts.can_redo.clone()),
             )

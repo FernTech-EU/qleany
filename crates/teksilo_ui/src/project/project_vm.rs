@@ -6,12 +6,16 @@
 //! `Global` to point at, when a field is finished being edited, and what the
 //! manifest's language code means to a user.
 
+use std::rc::Rc;
+
 use teksilo::prelude::*;
 use teksilo::widgets::ValidationState;
 
+use frontend::AppContext;
 use frontend::EntityId;
 
 use crate::app_ids::AppIds;
+use crate::edit::{UndoAction, labeled};
 use crate::shared::validation::required;
 use crate::singles::SingleGlobal;
 
@@ -75,6 +79,7 @@ impl Language {
 
 #[derive(Clone)]
 pub struct ProjectViewModel {
+    app_ctx: Rc<AppContext>,
     ids: AppIds,
     single: SingleGlobal,
     /// What the combo is showing. Derived from the handle's `language` code, and
@@ -91,9 +96,10 @@ impl std::fmt::Debug for ProjectViewModel {
 }
 
 impl ProjectViewModel {
-    pub fn new(single: SingleGlobal, ids: AppIds) -> Self {
+    pub fn new(app_ctx: Rc<AppContext>, single: SingleGlobal, ids: AppIds) -> Self {
         let language = Signal::new(None);
         let me = Self {
+            app_ctx,
             ids,
             single,
             language,
@@ -164,7 +170,10 @@ impl ProjectViewModel {
     /// for one typed name. The handle no-ops when nothing changed, so a blur that
     /// edited nothing costs a comparison.
     pub fn commit(&self) {
-        self.single.save(self.ids.project_stack.get());
+        let stack = self.ids.project_stack.get();
+        labeled(&self.app_ctx, stack, UndoAction::EditProject, || {
+            self.single.save(stack)
+        });
     }
 
     /// Pick the target language, and write it at once.
@@ -225,9 +234,6 @@ impl ProjectViewModel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::rc::Rc;
-
-    use frontend::AppContext;
 
     #[test]
     fn every_language_code_round_trips() {
@@ -257,7 +263,8 @@ mod tests {
     #[test]
     fn each_required_field_carries_its_own_message() {
         let ids = AppIds::new();
-        let vm = ProjectViewModel::new(SingleGlobal::new(Rc::new(AppContext::new())), ids);
+        let ctx = Rc::new(AppContext::new());
+        let vm = ProjectViewModel::new(ctx.clone(), SingleGlobal::new(ctx), ids);
         // Emptied rather than assumed empty: under `mocks` the handle starts with a
         // fabricated row, and this test is about the messages, not about what a
         // fresh handle happens to hold.
@@ -326,7 +333,7 @@ mod tests {
 
             let ids = AppIds::new();
             ids.global_id.set(Some(global.id));
-            let vm = ProjectViewModel::new(SingleGlobal::new(ctx.clone()), ids);
+            let vm = ProjectViewModel::new(ctx.clone(), SingleGlobal::new(ctx.clone()), ids);
             vm.point_at(Some(global.id));
             vm.sync_language();
             (ctx, vm, global.id)

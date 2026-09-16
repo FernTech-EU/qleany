@@ -147,13 +147,11 @@ fn header(vm: &EntitiesViewModel) -> impl Widget {
 /// Column one: every entity in the manifest, in manifest order.
 fn entity_column(vm: &EntitiesViewModel) -> impl Widget {
     let source = {
-        let list = vm.list();
-        let move_list = vm.list();
-        let stack = vm.stack_signal();
+        let reorder = vm.clone();
         ReorderableSource::new(
-            list.list_model(),
+            vm.list().list_model(),
             |row| row.id,
-            move |id, index| move_list.move_to(id, index, stack.get()),
+            move |id, index| reorder.reorder(id, index),
         )
     };
 
@@ -241,13 +239,11 @@ fn middle_column(entities: &EntitiesViewModel, fields: &FieldViewModel) -> impl 
 /// The field list, beside nothing: its form is the third column.
 fn field_pane(entities: &EntitiesViewModel, fields: &FieldViewModel) -> impl Widget {
     let source = {
-        let list = fields.list();
-        let move_list = fields.list();
-        let stack = fields.stack_signal();
+        let reorder = fields.clone();
         ReorderableSource::new(
-            list.list_model(),
+            fields.list().list_model(),
             |row| row.id,
-            move |id, index| move_list.move_to(id, index, stack.get()),
+            move |id, index| reorder.reorder(id, index),
         )
     };
 

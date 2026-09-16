@@ -9,11 +9,12 @@ use teksilo::widgets::{Toast, ValidationState};
 
 use frontend::AppContext;
 use frontend::EntityId;
-use frontend::commands::{entity_commands, handling_manifest_commands, undo_redo_commands};
+use frontend::commands::{entity_commands, handling_manifest_commands};
 use frontend::common::direct_access::entity::EntityRelationshipField;
 use frontend::direct_access::{CreateEntityDto, EntityRelationshipDto};
 
 use crate::app_ids::AppIds;
+use crate::edit::{UndoAction, labeled};
 use crate::models::{WorkspaceEntitiesListModel, WorkspaceEntitiesRow};
 use crate::shared::validation::{is_pascal_case, required_cased};
 use crate::singles::SingleEntity;
@@ -176,7 +177,11 @@ impl EntitiesViewModel {
             undoable: true,
             ..Default::default()
         };
-        if let Some(id) = self.list.create(&dto, -1, self.stack()) {
+        let stack = self.stack();
+        let created = labeled(&self.app_ctx, stack, UndoAction::AddEntity, || {
+            self.list.create(&dto, -1, stack)
+        });
+        if let Some(id) = created {
             self.select(id);
         }
     }
@@ -184,7 +189,10 @@ impl EntitiesViewModel {
     /// Delete an entity, with its fields and relationships: the relationship is
     /// strong, so the backend cascades.
     pub fn remove(&self, id: EntityId) {
-        self.list.remove(id, self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::RemoveEntity, || {
+            self.list.remove(id, stack)
+        });
         if self.selected_id() == Some(id) {
             self.selection.clear();
         }
@@ -228,7 +236,10 @@ impl EntitiesViewModel {
 
     /// Write the edited scalar fields back, as one undo entry.
     pub fn commit(&self) {
-        self.single.save(self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditEntity, || {
+            self.single.save(stack)
+        });
     }
 
     /// Mark the entity heritage-only, or concrete again.
@@ -246,30 +257,23 @@ impl EntitiesViewModel {
             return;
         };
 
-        let composite = only && self.inherits_from().is_some();
-        if composite
-            && let Err(e) = undo_redo_commands::begin_composite(&self.app_ctx, self.stack())
-        {
-            log::error!("could not start a composite edit: {e}");
-            return;
-        }
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditEntity, || {
+            self.single.set_only_for_heritage(only);
+            if only {
+                // A heritage-only entity is never instantiated, so neither flag has
+                // anything to act on.
+                self.single.set_undoable(false);
+                self.single.set_single_model(false);
+            }
+            // `save` rather than `commit`: the composite is already open and named,
+            // and opening a second one inside it would nest.
+            self.single.save(stack);
 
-        self.single.set_only_for_heritage(only);
-        if only {
-            // A heritage-only entity is never instantiated, so neither flag has
-            // anything to act on.
-            self.single.set_undoable(false);
-            self.single.set_single_model(false);
-        }
-        self.commit();
-
-        if only && self.inherits_from().is_some() {
-            self.write_inherits_from(id, None);
-        }
-
-        if composite {
-            undo_redo_commands::end_composite(&self.app_ctx);
-        }
+            if only && self.inherits_from().is_some() {
+                self.write_inherits_from(id, None);
+            }
+        });
     }
 
     pub fn set_single_model(&self, value: bool) {
@@ -280,6 +284,14 @@ impl EntitiesViewModel {
     pub fn set_undoable(&self, value: bool) {
         self.single.set_undoable(value);
         self.commit();
+    }
+
+    /// The parent, as its own named entry.
+    fn commit_inherits_from(&self, id: EntityId, parent: Option<EntityId>) {
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditEntity, || {
+            self.write_inherits_from(id, parent)
+        });
     }
 
     /// Point the selected entity at a parent, or at none.
@@ -293,7 +305,7 @@ impl EntitiesViewModel {
         if self.inherits_from() == parent {
             return;
         }
-        self.write_inherits_from(id, parent);
+        self.commit_inherits_from(id, parent);
     }
 
     fn write_inherits_from(&self, id: EntityId, parent: Option<EntityId>) {
@@ -390,14 +402,19 @@ impl EntitiesViewModel {
         self.parents.set_if_changed(parents);
     }
 
-    fn stack(&self) -> Option<u64> {
-        self.ids.entities_stack.get()
+    /// Move a row, as one named undo entry.
+    ///
+    /// Here rather than in the page: the reorder adapter outlives the frame that
+    /// built it, and what it needs is a command, not a model and a stack signal it
+    /// would have to name the operation from itself.
+    pub fn reorder(&self, id: EntityId, index: i32) {
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::ReorderEntities, || {
+            self.list.move_to(id, index, stack)
+        });
     }
 
-    /// The screen's undo stack, for anything that has to read it later rather than
-    /// now. A reorder adapter outlives the frame that built it, so it captures this
-    /// signal rather than the value.
-    pub fn stack_signal(&self) -> Signal<Option<u64>> {
-        self.ids.entities_stack.clone()
+    fn stack(&self) -> Option<u64> {
+        self.ids.entities_stack.get()
     }
 }

@@ -3,6 +3,7 @@
 pub mod menus;
 pub mod save_button;
 pub mod theme_button;
+pub mod undo_buttons;
 pub mod window;
 
 /// Logical-pixel height of the title bar.

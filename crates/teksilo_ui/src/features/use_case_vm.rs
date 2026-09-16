@@ -15,6 +15,7 @@ use frontend::common::direct_access::use_case::UseCaseRelationshipField;
 use frontend::direct_access::{CreateUseCaseDto, UseCaseRelationshipDto};
 
 use crate::app_ids::AppIds;
+use crate::edit::{UndoAction, labeled};
 use crate::models::{FeatureUseCasesListModel, FeatureUseCasesRow, WorkspaceEntitiesListModel};
 use crate::shared::validation::{is_snake_case, required_cased};
 use crate::singles::SingleUseCase;
@@ -193,10 +194,6 @@ impl UseCaseViewModel {
         self.associated.clone()
     }
 
-    pub fn stack_signal(&self) -> Signal<Option<u64>> {
-        self.ids.features_stack.clone()
-    }
-
     // ── commands ─────────────────────────────────────────────────────────────
 
     /// Append a use case with every flag off and no DTOs, which is the only shape
@@ -206,13 +203,20 @@ impl UseCaseViewModel {
             name: NEW_USE_CASE_NAME.to_string(),
             ..Default::default()
         };
-        if let Some(id) = self.list.create(&dto, -1, self.stack()) {
+        let stack = self.stack();
+        let created = labeled(&self.app_ctx, stack, UndoAction::AddUseCase, || {
+            self.list.create(&dto, -1, stack)
+        });
+        if let Some(id) = created {
             self.selection.select(id);
         }
     }
 
     pub fn remove(&self, id: EntityId) {
-        self.list.remove(id, self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::RemoveUseCase, || {
+            self.list.remove(id, stack)
+        });
         if self.selected_id() == Some(id) {
             self.selection.clear();
         }
@@ -223,7 +227,10 @@ impl UseCaseViewModel {
     }
 
     pub fn commit(&self) {
-        self.single.save(self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditUseCase, || {
+            self.single.save(stack)
+        });
         self.list.refresh();
     }
 
@@ -279,9 +286,11 @@ impl UseCaseViewModel {
             field: UseCaseRelationshipField::Entities,
             right_ids: ordered,
         };
-        if let Err(e) =
-            use_case_commands::set_use_case_relationship(&self.app_ctx, self.stack(), &dto)
-        {
+        let stack = self.stack();
+        let written = labeled(&self.app_ctx, stack, UndoAction::EditUseCase, || {
+            use_case_commands::set_use_case_relationship(&self.app_ctx, stack, &dto)
+        });
+        if let Err(e) = written {
             log::error!("could not associate entity {entity} with use case {id}: {e}");
             // The tick reverts: the list re-reads from the store, which still holds
             // what it held before.
@@ -411,6 +420,18 @@ impl UseCaseViewModel {
         for (entity, tick) in self.ticks.borrow().iter() {
             tick.set_if_changed(live.contains(entity));
         }
+    }
+
+    /// Move a row, as one named undo entry.
+    ///
+    /// Here rather than in the page: the reorder adapter outlives the frame that
+    /// built it, and what it needs is a command, not a model and a stack signal it
+    /// would have to name the operation from itself.
+    pub fn reorder(&self, id: EntityId, index: i32) {
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::ReorderUseCases, || {
+            self.list.move_to(id, index, stack)
+        });
     }
 
     fn stack(&self) -> Option<u64> {

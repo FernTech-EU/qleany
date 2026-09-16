@@ -12,12 +12,14 @@ use teksilo::widgets::{
 use crate::app::App;
 use crate::app_ids::AppIds;
 use crate::check::{CheckBadge, CheckViewModel};
+use crate::edit::UndoViewModel;
 use crate::manifest::ManifestViewModel;
 use crate::session::Session;
 use crate::shell::TITLE_BAR_HEIGHT;
 use crate::shell::menus::{self, MenuParts};
 use crate::shell::save_button::SaveButton;
 use crate::shell::theme_button::ThemeButton;
+use crate::shell::undo_buttons::UndoButtons;
 
 /// Build the window's widget tree.
 ///
@@ -31,13 +33,16 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
     // Validation is shell state, not a screen: the badge is in the title bar and
     // the navigation rail reads its verdict to decide whether Generate is reachable.
     let check = CheckViewModel::new(session.app_ctx.clone(), manifest.is_open());
+    // Undo is shell state too: it follows the active screen, and both the title bar
+    // and the Edit menu read it.
+    let undo = UndoViewModel::new(session.app_ctx.clone(), ids.clone());
     let parts = MenuParts {
         manifest_open: manifest.is_open(),
         can_save: manifest.can_save(),
-        // Undo and redo follow the active screen's stack; the shell only needs to
-        // know whether the rows are live, which `App` mirrors in as it wires them.
-        can_undo: Signal::new(false),
-        can_redo: Signal::new(false),
+        can_undo: undo.can_undo(),
+        can_redo: undo.can_redo(),
+        undo_label: undo.undo_label(),
+        redo_label: undo.redo_label(),
         dark: Signal::new(false),
         check_critical: check.critical(),
     };
@@ -55,8 +60,9 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
     );
     let theme = ThemeButton::new(parts.dark.clone());
     let badge = CheckBadge::new(check.clone());
+    let undo_buttons = UndoButtons::new(undo.can_undo(), undo.can_redo());
 
-    let body = App::new(session, ids, parts.clone(), manifest.clone(), check);
+    let body = App::new(session, ids, parts.clone(), manifest.clone(), check, undo);
 
     match tree.title_bar_host() {
         Some(host) => {
@@ -73,6 +79,7 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
                 HStack {
                     spacing: 4.0
                     alignment: VAlignment::Center
+                    child: undo_buttons
                     child: theme
                 }
             );
@@ -117,6 +124,7 @@ pub fn build_root(tree: &mut WidgetTree, session: Session, ids: AppIds) -> Widge
                     child: save
                     child: badge
                     Expand::horizontal
+                    child: undo_buttons
                     child: theme
                 }
             );

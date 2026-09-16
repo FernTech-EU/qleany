@@ -10,6 +10,7 @@ use teksilo::prelude::*;
 use frontend::EntityId;
 
 use crate::app_ids::AppIds;
+use crate::edit::{UndoAction, labeled};
 use crate::project::Language;
 use crate::singles::SingleUserInterface;
 
@@ -55,6 +56,7 @@ impl Target {
 
 #[derive(Clone)]
 pub struct UserInterfaceViewModel {
+    app_ctx: std::rc::Rc<frontend::AppContext>,
     ids: AppIds,
     single: SingleUserInterface,
     /// The project's language, read rather than owned: the two screens must agree
@@ -73,11 +75,13 @@ impl std::fmt::Debug for UserInterfaceViewModel {
 
 impl UserInterfaceViewModel {
     pub fn new(
+        app_ctx: std::rc::Rc<frontend::AppContext>,
         single: SingleUserInterface,
         ids: AppIds,
         language: Signal<Option<Language>>,
     ) -> Self {
         Self {
+            app_ctx,
             ids,
             single,
             language,
@@ -129,7 +133,10 @@ impl UserInterfaceViewModel {
             Target::CppQtWidgets => self.single.set_cpp_qt_qtwidgets(value),
             Target::CppQtQuick => self.single.set_cpp_qt_qtquick(value),
         }
-        self.single.save(self.ids.user_interface_stack.get());
+        let stack = self.ids.user_interface_stack.get();
+        labeled(&self.app_ctx, stack, UndoAction::EditUserInterface, || {
+            self.single.save(stack)
+        });
     }
 
     // ── wiring ───────────────────────────────────────────────────────────────

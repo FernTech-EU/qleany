@@ -97,13 +97,11 @@ fn enabled_body(vm: &DtoViewModel) -> impl Widget {
 /// The DTO's fields, with their own plus and their own reorder.
 fn fields_pane(vm: &DtoViewModel) -> impl Widget {
     let source = {
-        let list = vm.fields();
-        let move_list = vm.fields();
-        let stack = vm.stack_signal();
+        let reorder = vm.clone();
         ReorderableSource::new(
-            list.list_model(),
+            vm.fields().list_model(),
             |row| row.id,
-            move |id, index| move_list.move_to(id, index, stack.get()),
+            move |id, index| reorder.reorder_field(id, index),
         )
     };
 

@@ -11,6 +11,7 @@ use frontend::EntityId;
 use frontend::direct_access::CreateFeatureDto;
 
 use crate::app_ids::AppIds;
+use crate::edit::{UndoAction, labeled};
 use crate::models::WorkspaceFeaturesListModel;
 use crate::shared::validation::{is_snake_case, required_cased};
 use crate::singles::SingleFeature;
@@ -21,6 +22,7 @@ const NEW_FEATURE_NAME: &str = "new_feature";
 
 #[derive(Clone)]
 pub struct FeaturesViewModel {
+    app_ctx: Rc<AppContext>,
     ids: AppIds,
     list: WorkspaceFeaturesListModel,
     single: SingleFeature,
@@ -38,12 +40,13 @@ impl std::fmt::Debug for FeaturesViewModel {
 
 impl FeaturesViewModel {
     pub fn new(
-        _app_ctx: Rc<AppContext>,
+        app_ctx: Rc<AppContext>,
         ids: AppIds,
         list: WorkspaceFeaturesListModel,
         single: SingleFeature,
     ) -> Self {
         Self {
+            app_ctx,
             ids,
             list,
             single,
@@ -88,10 +91,6 @@ impl FeaturesViewModel {
         )
     }
 
-    pub fn stack_signal(&self) -> Signal<Option<u64>> {
-        self.ids.features_stack.clone()
-    }
-
     // ── commands ─────────────────────────────────────────────────────────────
 
     pub fn add(&self) {
@@ -99,7 +98,11 @@ impl FeaturesViewModel {
             name: NEW_FEATURE_NAME.to_string(),
             ..Default::default()
         };
-        if let Some(id) = self.list.create(&dto, -1, self.stack()) {
+        let stack = self.stack();
+        let created = labeled(&self.app_ctx, stack, UndoAction::AddFeature, || {
+            self.list.create(&dto, -1, stack)
+        });
+        if let Some(id) = created {
             self.selection.select(id);
         }
     }
@@ -107,7 +110,10 @@ impl FeaturesViewModel {
     /// Delete a feature, with its use cases and their DTOs: the relationships are
     /// strong all the way down, so the backend cascades.
     pub fn remove(&self, id: EntityId) {
-        self.list.remove(id, self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::RemoveFeature, || {
+            self.list.remove(id, stack)
+        });
         if self.selected_id() == Some(id) {
             self.selection.clear();
         }
@@ -118,7 +124,10 @@ impl FeaturesViewModel {
     }
 
     pub fn commit(&self) {
-        self.single.save(self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditFeature, || {
+            self.single.save(stack)
+        });
     }
 
     // ── wiring ───────────────────────────────────────────────────────────────
@@ -150,6 +159,18 @@ impl FeaturesViewModel {
     fn prune_selection(&self) {
         let live: Vec<EntityId> = self.list.rows().iter().map(|r| r.id).collect();
         self.selection.prune_missing(|id| live.contains(id));
+    }
+
+    /// Move a row, as one named undo entry.
+    ///
+    /// Here rather than in the page: the reorder adapter outlives the frame that
+    /// built it, and what it needs is a command, not a model and a stack signal it
+    /// would have to name the operation from itself.
+    pub fn reorder(&self, id: EntityId, index: i32) {
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::ReorderFeatures, || {
+            self.list.move_to(id, index, stack)
+        });
     }
 
     fn stack(&self) -> Option<u64> {

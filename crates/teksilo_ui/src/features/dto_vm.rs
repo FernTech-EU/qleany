@@ -23,6 +23,7 @@ use frontend::common::entities::DtoFieldType;
 use frontend::direct_access::{CreateDtoDto, CreateDtoFieldDto, UseCaseRelationshipDto};
 
 use crate::app_ids::AppIds;
+use crate::edit::{UndoAction, labeled};
 use crate::models::{DtoFieldsListModel, DtoFieldsRow};
 use crate::shared::settle::Settle;
 use crate::shared::validation::{is_pascal_case, is_snake_case, required_cased};
@@ -283,10 +284,6 @@ impl DtoViewModel {
         self.enum_document.clone()
     }
 
-    pub fn stack_signal(&self) -> Signal<Option<u64>> {
-        self.ids.features_stack.clone()
-    }
-
     // ── commands ─────────────────────────────────────────────────────────────
 
     /// Create the DTO and link it, as one undoable step.
@@ -303,7 +300,11 @@ impl DtoViewModel {
             return;
         }
 
-        if let Err(e) = undo_redo_commands::begin_composite(&self.app_ctx, self.stack()) {
+        if let Err(e) = undo_redo_commands::begin_composite_labeled(
+            &self.app_ctx,
+            self.stack(),
+            Some(UndoAction::EnableDto.label()),
+        ) {
             log::error!("could not start a composite edit: {e}");
             return;
         }
@@ -358,7 +359,11 @@ impl DtoViewModel {
             return;
         };
 
-        if let Err(e) = undo_redo_commands::begin_composite(&self.app_ctx, self.stack()) {
+        if let Err(e) = undo_redo_commands::begin_composite_labeled(
+            &self.app_ctx,
+            self.stack(),
+            Some(UndoAction::DisableDto.label()),
+        ) {
             log::error!("could not start a composite edit: {e}");
             return;
         }
@@ -385,7 +390,10 @@ impl DtoViewModel {
     }
 
     pub fn commit_name(&self) {
-        self.dto.save(self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditDto, || {
+            self.dto.save(stack)
+        });
     }
 
     pub fn add_field(&self) {
@@ -394,13 +402,20 @@ impl DtoViewModel {
             field_type: DtoFieldType::String,
             ..Default::default()
         };
-        if let Some(id) = self.fields.create(&dto, -1, self.stack()) {
+        let stack = self.stack();
+        let created = labeled(&self.app_ctx, stack, UndoAction::AddDtoField, || {
+            self.fields.create(&dto, -1, stack)
+        });
+        if let Some(id) = created {
             self.selection.select(id);
         }
     }
 
     pub fn remove_field(&self, id: EntityId) {
-        self.fields.remove(id, self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::RemoveDtoField, || {
+            self.fields.remove(id, stack)
+        });
         if self.selected_field() == Some(id) {
             self.selection.clear();
         }
@@ -411,7 +426,10 @@ impl DtoViewModel {
     }
 
     pub fn commit_field(&self) {
-        self.field.save(self.stack());
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::EditDtoField, || {
+            self.field.save(stack)
+        });
         self.fields.refresh();
     }
 
@@ -592,6 +610,18 @@ impl DtoViewModel {
         if let Err(e) = self.enum_document.set_plain_text(&joined) {
             log::error!("could not fill the enum editor: {e}");
         }
+    }
+
+    /// Move a row, as one named undo entry.
+    ///
+    /// Here rather than in the page: the reorder adapter outlives the frame that
+    /// built it, and what it needs is a command, not a model and a stack signal it
+    /// would have to name the operation from itself.
+    pub fn reorder_field(&self, id: EntityId, index: i32) {
+        let stack = self.stack();
+        labeled(&self.app_ctx, stack, UndoAction::ReorderDtoFields, || {
+            self.fields.move_to(id, index, stack)
+        });
     }
 
     fn stack(&self) -> Option<u64> {

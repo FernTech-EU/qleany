@@ -11,6 +11,7 @@ use crate::app::nav::NavRail;
 
 use crate::app_ids::{AppIds, Screen};
 use crate::check::CheckViewModel;
+use crate::edit::UndoViewModel;
 use crate::entities::{EntitiesPage, EntitiesViewModel, FieldViewModel};
 use crate::features::{DtoSide, DtoViewModel, FeaturesPage, FeaturesViewModel, UseCaseViewModel};
 use crate::generate::{GeneratePage, GenerateViewModel};
@@ -27,6 +28,7 @@ pub struct App {
     parts: MenuParts,
     manifest: ManifestViewModel,
     check: CheckViewModel,
+    undo: UndoViewModel,
     // The screens' view-models are built once and kept, never built inside `build`.
     // A rebuild would otherwise hand each screen a fresh set of signals, and
     // anything held in one, a selection, a pending edit, a bridged combo value,
@@ -51,8 +53,13 @@ impl App {
         parts: MenuParts,
         manifest: ManifestViewModel,
         check: CheckViewModel,
+        undo: UndoViewModel,
     ) -> Self {
-        let project = ProjectViewModel::new(session.single_global.clone(), ids.clone());
+        let project = ProjectViewModel::new(
+            session.app_ctx.clone(),
+            session.single_global.clone(),
+            ids.clone(),
+        );
         let entities = EntitiesViewModel::new(
             session.app_ctx.clone(),
             ids.clone(),
@@ -72,6 +79,7 @@ impl App {
         // The language lives on the Project screen; the targets on offer here follow
         // it, so the signal is shared rather than mirrored.
         let user_interface = UserInterfaceViewModel::new(
+            session.app_ctx.clone(),
             session.single_user_interface.clone(),
             ids.clone(),
             project.language(),
@@ -120,6 +128,7 @@ impl App {
             parts,
             manifest,
             check,
+            undo,
             home: HomeViewModel::new(),
             project,
             entities,
@@ -198,6 +207,7 @@ impl Widget for App {
         self.follow_generate_screen(ctx);
         self.manifest.wire(ctx);
         self.check.wire(ctx);
+        self.undo.wire(ctx);
         commands::register(
             ctx,
             &CommandDeps {
@@ -205,6 +215,7 @@ impl Widget for App {
                 parts: self.parts.clone(),
                 manifest: self.manifest.clone(),
                 entities: self.entities.clone(),
+                undo: self.undo.clone(),
             },
         );
 
