@@ -4778,6 +4778,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "qleany-frontend"
+version = "1.12.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "flume",
+ "log",
+ "qleany-common",
+ "qleany-cpp-qt-file-generation",
+ "qleany-direct-access",
+ "qleany-file-generation-shared-steps",
+ "qleany-handling-app-lifecycle",
+ "qleany-handling-manifest",
+ "qleany-rust-file-generation",
+]
+
+[[package]]
 name = "qleany-handling-app-lifecycle"
 version = "1.12.0"
 dependencies = [

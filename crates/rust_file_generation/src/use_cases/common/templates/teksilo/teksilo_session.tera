@@ -50,7 +50,7 @@ pub struct Session {
     {%- if f.inner.list_model and f.inner.entity %}
     pub {{ ent.snake_name }}_{{ f.snake_name }}: {{ ent.pascal_name }}{{ f.pascal_name }}ListModel,
     /// Which `{{ ent.pascal_name }}` the list above belongs to. `None` leaves the
-    /// list empty; [`crate::app::bootstrap`] seeds the ones it can.
+    /// list empty; `app::bootstrap` seeds the ones it can.
     pub {{ ent.snake_name }}_{{ f.snake_name }}_owner: Signal<Option<EntityId>>,
     {%- endif %}
     {%- endfor %}

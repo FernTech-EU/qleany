@@ -3,6 +3,7 @@
 members = [
     "crates/common",
     "crates/direct_access",
+    "crates/frontend",
     "crates/handling_manifest",
     "crates/cpp_qt_file_generation",
     "crates/rust_file_generation",
@@ -46,6 +47,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 common = { package = "qleany-common", version = "1.12.0", path = "crates/common" }
 macros = { package = "qleany-macros", version = "1.12.0", path = "crates/macros" }
 direct_access = { package = "qleany-direct-access", version = "1.12.0", path = "crates/direct_access" }
+frontend = { package = "qleany-frontend", version = "1.12.0", path = "crates/frontend" }
 handling_manifest = { package = "qleany-handling-manifest", version = "1.12.0", path = "crates/handling_manifest" }
 rust_file_generation = { package = "qleany-rust-file-generation", version = "1.12.0", path = "crates/rust_file_generation" }
 cpp_qt_file_generation = { package = "qleany-cpp-qt-file-generation", version = "1.12.0", path = "crates/cpp_qt_file_generation" }
