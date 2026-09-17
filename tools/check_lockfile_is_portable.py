@@ -8,8 +8,8 @@ unresolvable anywhere else: `cargo build --locked` fails outright, and a build
 without `--locked` silently re-resolves to whatever the registry has, which is a
 different and usually older version of the crate.
 
-This is not a hypothetical. Local co-development against an unreleased teksilo
-uses a gitignored `.cargo/config.toml` carrying
+This is not a hypothetical. Building against a local teksilo checkout, which
+CONTRIBUTING describes, uses a gitignored `.cargo/config.toml` carrying
 
     [patch.crates-io]
     teksilo = { path = "../teksilo/crates/teksilo" }

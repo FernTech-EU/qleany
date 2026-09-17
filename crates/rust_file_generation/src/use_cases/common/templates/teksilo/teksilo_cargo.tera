@@ -38,7 +38,7 @@ mocks = []
 [dependencies]
 # A literal version, deliberately not `{ workspace = true }`: this crate is also
 # compiled from test harnesses whose workspace root does not declare teksilo.
-teksilo = "0.10.0"
+teksilo = "0.12.0"
 
 # Backend
 frontend = { workspace = true }

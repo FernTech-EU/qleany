@@ -50,16 +50,16 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # FernTech's own GUI framework, the toolkit crates/teksilo_ui is written in.
 #
 # Declared against crates.io so CI, `cargo publish` and the maturin wheel build
-# all resolve without a sibling checkout. Co-developing against an unreleased
-# teksilo is a LOCAL concern: put a `[patch.crates-io]` in an untracked
-# `.cargo/config.toml` pointing at ../teksilo/crates/teksilo. See CONTRIBUTING.
+# all resolve without a sibling checkout. Building against a local teksilo is a
+# LOCAL concern, done with an untracked `.cargo/config.toml`; CONTRIBUTING has
+# the procedure and the lockfile it damages.
 #
 # `theme-fluent` is what makes `teksilo::presets::fluent::{light,dark}` exist.
 # `automation` installs the debug-only bridge the scripts/automation_*.py probes
 # attach to. `async-std` (not bare `async`) because bare `async` installs an
 # executor with NO reactor: it runs `spawn_blocking` futures fine and then hangs
 # silently the first time anything awaits a native future.
-teksilo = { version = "0.10.0", features = [
+teksilo = { version = "0.12.0", features = [
     "theme-fluent",
     "automation",
     "async-std",
