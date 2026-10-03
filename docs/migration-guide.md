@@ -25,6 +25,15 @@ ui:
   rust_slint: false
 ```
 
+### C++/Qt query lifetime and shutdown fix
+
+Regenerate the C++/Qt undo/redo infrastructure to pick up the query lifetime
+fix. Shared queries no longer also belong to a Qt parent, preventing an invalid
+free when a pending query outlives its handler. Concurrent queries are tracked
+individually, and each awaiting coroutine resumes only for its own completion.
+Pending query completion is also safe after the undo/redo system is destroyed.
+No manifest changes are needed.
+
 ### Breaking: Rust relationship constraints and Teksilo weak lists
 
 Regenerate the Rust infrastructure and Teksilo models together. Schema v6 and

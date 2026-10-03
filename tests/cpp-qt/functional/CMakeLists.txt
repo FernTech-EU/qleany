@@ -69,3 +69,5 @@ target_include_directories(functional_tst_feature_use_cases PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../tested_project/src/project_management
     ${CMAKE_CURRENT_SOURCE_DIR}/../tested_project/src/task_management
 )
+add_functional_test(functional_tst_query_lifetime tst_query_lifetime.cpp)
+set_tests_properties(functional_tst_query_lifetime PROPERTIES TIMEOUT 30)
