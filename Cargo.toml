@@ -59,7 +59,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # attach to. `async-std` (not bare `async`) because bare `async` installs an
 # executor with NO reactor: it runs `spawn_blocking` futures fine and then hangs
 # silently the first time anything awaits a native future.
-teksilo = { version = "0.12.0", features = [
+teksilo = { version = "0.14.3", features = [
     "theme-fluent",
     "automation",
     "async-std",
@@ -78,4 +78,9 @@ file_generation_shared_steps = { package = "qleany-file-generation-shared-steps"
 naming = { package = "qleany-naming", version = "1.12.0", path = "crates/naming" }
 
 [workspace.lints.rust]
+
+[workspace.metadata]
+
+[workspace.metadata.teksilo]
+probe = "0.14.3"
 

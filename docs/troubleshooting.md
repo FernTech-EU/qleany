@@ -170,7 +170,7 @@ Validate your YAML syntax with an online validator or `yamllint` before loading 
 
 ### Relationship validation fails
 
-Certain relationship configurations are invalid and rejected at parse time. For example, `strong: true` is only valid on `one_to_one`, `one_to_many`, and `ordered_one_to_many` relationships — not on `many_to_one` or `many_to_many`. The `optional` flag only applies to `one_to_one` and `many_to_one`.
+Certain relationship configurations are invalid and reported by `qleany check` before generation. For example, `strong: true` is only valid on `one_to_one`, `one_to_many`, and `ordered_one_to_many` relationships — not on `many_to_one` or `many_to_many` (C49). Multiple strong owning fields on the same parent type produce warning W06 because generated creation needs an unambiguous owning field. The `optional` flag only applies to `one_to_one` and `many_to_one`.
 
 Similarly, `is_list` and `optional` are mutually exclusive on entity fields — a field cannot be both a list and optional. And `is_list` cannot be used with `entity` or `enum` field types.
 

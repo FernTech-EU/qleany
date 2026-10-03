@@ -125,6 +125,40 @@ impl App {
             use_cases.selected(),
             use_cases.name(),
         );
+        // Text editors retain one undoable edit until Enter/blur. Their buffers
+        // must still enable Save immediately, and Ctrl+S must commit them first.
+        let pending = [
+            session.single_global.dirty(),
+            session.single_entity.dirty(),
+            session.single_field.dirty(),
+            session.single_feature.dirty(),
+            session.single_use_case.dirty(),
+            session.single_user_interface.dirty(),
+            dto_in.pending_dirty(),
+            dto_out.pending_dirty(),
+        ]
+        .into_iter()
+        .fold(Signal::new(false), |any, dirty| {
+            any.zip(&dirty).map(|(any, dirty)| *any || *dirty)
+        });
+        let editors = (
+            project.clone(),
+            entities.clone(),
+            fields.clone(),
+            features.clone(),
+            use_cases.clone(),
+            dto_in.clone(),
+            dto_out.clone(),
+        );
+        manifest.track_pending_edits(pending, move || {
+            editors.0.commit();
+            editors.1.commit();
+            editors.2.flush_pending_edits();
+            editors.3.commit();
+            editors.4.commit();
+            editors.5.flush_pending_edits();
+            editors.6.flush_pending_edits();
+        });
         let app_ctx_for_wizard = session.app_ctx.clone();
         // The demo loads a manifest of its own, so it goes through the same
         // view-model every other open does rather than writing to the store behind
@@ -220,6 +254,9 @@ impl Widget for App {
         // the whole app deaf after its first rebuild.
         self.session.wire_all(ctx);
         self.point_workspace_lists(ctx);
+        // Language is shared with User Interface and must follow the manifest
+        // before the lazy Project page has ever been mounted.
+        self.project.wire(ctx);
         self.follow_generate_screen(ctx);
         self.manifest.wire(ctx);
         self.check.wire(ctx);
@@ -289,5 +326,66 @@ impl Widget for App {
             .and_then(|id| ctx.child_size(id, proposal))
             .map(LayoutResponse::from)
             .unwrap_or_else(|| proposal.resolve(0.0, 0.0).into())
+    }
+}
+
+#[cfg(all(test, not(feature = "mocks")))]
+mod tests {
+    use super::*;
+    use crate::{event_source::QleanyEventSource, project::Language, test_support::Fixture};
+    use frontend::{EventHubClient, handling_manifest::dtos::CreateLanguage};
+    use teksilo::core::{
+        WidgetTree,
+        event_source::{AppEventPoster, EventSourceAdapter, SubscriptionId, TreeAppContext},
+    };
+
+    struct NoEvents;
+    impl AppEventPoster for NoEvents {
+        fn post_subscription_event(&self, _: SubscriptionId, _: Box<dyn std::any::Any + Send>) {}
+    }
+
+    #[test]
+    fn cpp_targets_are_ready_before_project_is_visited() {
+        let f = Fixture::new(CreateLanguage::CppQt);
+        let session = Session::new(f.ctx.clone());
+        let check = CheckViewModel::new(f.ctx.clone(), f.manifest.is_open());
+        let undo = UndoViewModel::new(f.ctx.clone(), f.ids.clone());
+        let parts = MenuParts {
+            manifest_open: f.manifest.is_open(),
+            can_save: f.manifest.can_save(),
+            can_undo: undo.can_undo(),
+            can_redo: undo.can_redo(),
+            undo_label: undo.undo_label(),
+            redo_label: undo.redo_label(),
+            dark: Signal::new(false),
+            check_critical: check.critical(),
+        };
+        let app = App::new(
+            session,
+            f.ids.clone(),
+            parts,
+            f.manifest.clone(),
+            check,
+            undo,
+            Signal::new(false),
+        );
+        let ui = app.user_interface.clone();
+        f.ids.screen.set(Screen::UserInterface);
+        let source = QleanyEventSource::new(EventHubClient::new(&f.ctx.event_hub));
+        let mut tree = WidgetTree::new();
+        tree.set_app_context(std::rc::Rc::new(TreeAppContext::with_source_and_poster(
+            EventSourceAdapter::new(source),
+            std::sync::Arc::new(NoEvents),
+        )));
+        tree.add(app);
+        tree.layout(SizeProposal::exact(1280.0, 820.0));
+        assert_eq!(ui.language().get(), Some(Language::CppQt));
+        assert_eq!(
+            ui.targets(),
+            &[
+                crate::user_interface::Target::CppQtWidgets,
+                crate::user_interface::Target::CppQtQuick
+            ]
+        );
     }
 }

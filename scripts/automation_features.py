@@ -13,12 +13,12 @@ hold different DTOs, which is the assertion that they are two.
 """
 
 import os
-import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = (
     "US-FEAT-01", "US-FEAT-02", "US-FEAT-04", "US-FEAT-06",
@@ -27,7 +27,7 @@ STORIES = (
 )
 PROBE = "features"
 SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
-SETTLE = {"settle": {"settle_timeout_ms": 3000}}
+SETTLE = {"settle_timeout_ms": 3000}
 
 #: The three list columns, by where they start.
 FEATURE_COLUMN = (0, 393)
@@ -42,7 +42,7 @@ def in_column(node, column):
 
 def rows(session, column):
     listed = [
-        n for n in session.nodes()
+        n for n in tree.nodes(session)
         if n.get("role") == "ListBoxOption" and in_column(n, column)
     ]
     return [
@@ -59,7 +59,7 @@ def texts(session):
     node's description rather than as a separate text run.
     """
     out = []
-    for n in session.nodes():
+    for n in tree.nodes(session):
         for key in ("label", "value", "description"):
             if n.get(key):
                 out.append(n[key])
@@ -67,12 +67,12 @@ def texts(session):
 
 
 def statuses(session):
-    return [n.get("label") for n in session.nodes() if n.get("role") == "Status"]
+    return [n.get("label") for n in tree.nodes(session) if n.get("role") == "Status"]
 
 
 def checkboxes(session):
     out = {}
-    for n in session.nodes():
+    for n in tree.nodes(session):
         if n.get("role") == "CheckBox":
             out.setdefault(n.get("label"), n)
     return out
@@ -80,7 +80,7 @@ def checkboxes(session):
 
 def text_inputs(session, column=DETAIL_COLUMN):
     return [
-        n for n in session.nodes()
+        n for n in tree.nodes(session)
         if n.get("role") == "TextInput" and in_column(n, column)
     ]
 
@@ -93,38 +93,35 @@ def named_input(session, label, column=DETAIL_COLUMN):
 
 
 def click_row(session, label, column):
-    for n in session.nodes():
+    for n in tree.nodes(session):
         if n.get("role") == "ListBoxOption" and n.get("label") == label and in_column(n, column):
-            session.click(n)
-            session.call("settle", SETTLE)
+            navigate.click(session, n, settle=False)
+            session.settle(**SETTLE)
             return True
     return False
 
 
 def main():
-    checks = fixture.Checks()
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{os.getpid()}.log")
-
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
-    env = fixture.isolated_config(PROBE)
-    env["QLEANY_DEV"] = "1"
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=os.path.dirname(manifest),
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    checks = Report(PROBE)
+    app = session = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
+        env = fixture.isolated_config(PROBE)
+        env["QLEANY_DEV"] = "1"
 
-        session.click(session.find("Open Qleany manifest", timeout=20))
-        session.call("settle", SETTLE)
-        session.click(session.find("Features", timeout=10))
-        session.call("settle", SETTLE)
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()],
+            cwd=os.path.dirname(manifest),
+            env=env, label=f"qleany-{PROBE}",
+        )
+        if tree.wait_for_node(session, label="Home", timeout=30) is None:
+            raise RuntimeError("the app never rendered its navigation rail")
+        session.settle()
+
+        navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=20), settle=False)
+        session.settle(**SETTLE)
+        fixture.go_to(session, "Features", settle=False)
+        session.settle(**SETTLE)
 
         features = rows(session, FEATURE_COLUMN)
         checks.check(
@@ -157,7 +154,7 @@ def main():
             "US-FEAT-06 the flags join with a middle dot in a fixed order",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-features.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-features.png"))
 
         # US-DTO-09: the entities a use case touches, read from the manifest.
         checks.check(click_row(session, "load", USE_CASE_COLUMN), "a use case can be selected")
@@ -190,11 +187,11 @@ def main():
             "LoadDto" in names,
             f"US-DTO-01 the input DTO is named after its use case, got {names}",
         )
-        out_tab = session.find("Output DTO", timeout=3)
+        out_tab = tree.wait_for_node(session, label="Output DTO", timeout=3)
         checks.check(out_tab is not None, "US-DTO-10 there is an output tab")
         if out_tab is not None:
-            session.click(out_tab)
-            session.call("settle", SETTLE)
+            navigate.click(session, out_tab, settle=False)
+            session.settle(**SETTLE)
             names = [n.get("value") for n in text_inputs(session)]
             checks.check(
                 "LoadReturnDto" in names,
@@ -206,30 +203,30 @@ def main():
             )
 
         # US-DTO-05/07: a field, and the eight types with no Entity among them.
-        add = session.find("Add field", timeout=3)
+        add = tree.wait_for_node(session, label="Add field", timeout=3)
         checks.check(add is not None, "US-DTO-05 the DTO pane offers a plus")
         if add is not None:
-            session.click(add)
-            session.call("settle", SETTLE)
+            navigate.click(session, add, settle=False)
+            session.settle(**SETTLE)
             checks.check(
                 "new_field" in texts(session),
                 "US-DTO-05 the new field is appended",
             )
 
         type_combo = next(
-            (n for n in session.nodes()
+            (n for n in tree.nodes(session)
              if n.get("role") == "ComboBox" and n.get("label") == "Type"),
             None,
         )
         checks.check(type_combo is not None, "US-DTO-07 the field has a type combo")
         if type_combo is not None:
-            before = {n["id"] for n in session.nodes() if n.get("role") == "ListBoxOption"}
-            session.click(type_combo)
-            session.call("settle", SETTLE)
+            before = {n["id"] for n in tree.nodes(session) if n.get("role") == "ListBoxOption"}
+            navigate.click(session, type_combo, settle=False)
+            session.settle(**SETTLE)
             offered = [
                 n.get("label")
                 for n in sorted(
-                    (n for n in session.nodes()
+                    (n for n in tree.nodes(session)
                      if n.get("role") == "ListBoxOption"
                      and n["id"] not in before and n.get("label")),
                     key=lambda n: n.get("bounds", {}).get("y", 0),
@@ -244,33 +241,33 @@ def main():
                 "Entity" not in offered,
                 "US-DTO-07 and never an entity: that is what a DTO exists to avoid",
             )
-            session.call("inject_key", {"key": "Escape"})
-            session.call("settle", SETTLE)
+            session.tools.inject_key(key="Escape")
+            session.settle(**SETTLE)
 
         # US-DTO-02: unticking asks first, and cancelling leaves it ticked.
         toggle = checkboxes(session).get("Enable DTO Out")
         checks.check(toggle is not None, "US-DTO-02 the output pane has its toggle")
         if toggle is not None:
-            session.click(toggle)
-            session.call("settle", SETTLE)
+            navigate.click(session, toggle, settle=False)
+            session.settle(**SETTLE)
             spoken = texts(session)
             checks.check(
                 any("will be deleted" in t for t in spoken),
                 f"US-DTO-02 unticking asks before destroying the DTO",
             )
-            no = session.find("No", timeout=3)
+            no = tree.wait_for_node(session, label="No", timeout=3)
             checks.check(no is not None, "US-DTO-02 the question can be declined")
             if no is not None:
-                session.click(no)
-                session.call("settle", SETTLE)
+                navigate.click(session, no, settle=False)
+                session.settle(**SETTLE)
                 checks.check(
                     checkboxes(session).get("Enable DTO Out", {}).get("toggled") == "true",
                     "US-DTO-02 declining leaves the DTO, and the box ticked",
                 )
 
         # US-FEAT-01/02: a feature, and its name validation.
-        session.click(session.find("Add feature", timeout=3))
-        session.call("settle", SETTLE)
+        navigate.click(session, tree.wait_for_node(session, label="Add feature", timeout=3), settle=False)
+        session.settle(**SETTLE)
         checks.check(
             rows(session, FEATURE_COLUMN)[-1] == "new_feature",
             "US-FEAT-01 the new feature is appended",
@@ -281,25 +278,25 @@ def main():
         name = named_input(session, "Name", USE_CASE_COLUMN)
         checks.check(name is not None, "US-FEAT-02 the feature form is showing")
         if name is not None:
-            session.call("set_value", {"node": name["id"], "value": "Not Snake"})
-            session.call("settle", SETTLE)
+            session.tools.set_value(node=name["id"], value="Not Snake")
+            session.settle(**SETTLE)
             checks.check(
                 "Feature name must be in snake_case" in statuses(session),
                 "US-FEAT-02 a badly cased feature name says so",
             )
             name = named_input(session, "Name", USE_CASE_COLUMN)
-            session.call("focus_node", {"node": name["id"]})
-            session.call("set_value", {"node": name["id"], "value": "probed_feature"})
-            session.call("inject_key", {"key": "Enter"})
-            session.call("settle", SETTLE)
+            session.tools.focus_node(node=name["id"])
+            session.tools.set_value(node=name["id"], value="probed_feature")
+            session.tools.inject_key(key="Enter")
+            session.settle(**SETTLE)
             checks.check(
                 "probed_feature" in rows(session, FEATURE_COLUMN),
                 "US-FEAT-02 the committed name reaches the list",
             )
 
         # US-FEAT-04: a use case, with every flag off.
-        session.click(session.find("Add use case", timeout=3))
-        session.call("settle", SETTLE)
+        navigate.click(session, tree.wait_for_node(session, label="Add use case", timeout=3), settle=False)
+        session.settle(**SETTLE)
         checks.check(
             rows(session, USE_CASE_COLUMN) == ["new_use_case"],
             "US-FEAT-04 the new use case is the only one of the new feature",
@@ -312,11 +309,11 @@ def main():
         )
         # The output tab is still the open one: the tab selection survives a
         # rebuild, which is the point of it. Switch back to the input pane.
-        in_tab = session.find("Input DTO", timeout=3)
+        in_tab = tree.wait_for_node(session, label="Input DTO", timeout=3)
         checks.check(in_tab is not None, "US-DTO-10 the input tab is still reachable")
         if in_tab is not None:
-            session.click(in_tab)
-            session.call("settle", SETTLE)
+            navigate.click(session, in_tab, settle=False)
+            session.settle(**SETTLE)
         boxes = checkboxes(session)
         checks.check(
             boxes.get("Enable DTO In", {}).get("toggled") == "false",
@@ -325,8 +322,8 @@ def main():
 
         # US-FEAT-06: ticking Read only takes Undoable away, because a use case that
         # writes nothing has nothing to undo.
-        session.click(boxes["Read only"])
-        session.call("settle", SETTLE)
+        navigate.click(session, boxes["Read only"], settle=False)
+        session.settle(**SETTLE)
         checks.check(
             "Undoable" not in checkboxes(session),
             "US-FEAT-06 Undoable is hidden while Read only is ticked",
@@ -336,37 +333,38 @@ def main():
         toggle_in = checkboxes(session).get("Enable DTO In")
         checks.check(toggle_in is not None, "US-DTO-01 the input pane has its toggle")
         if toggle_in is not None:
-            session.click(toggle_in)
-            session.call("settle", SETTLE)
+            navigate.click(session, toggle_in, settle=False)
+            session.settle(**SETTLE)
         names = [n.get("value") for n in text_inputs(session)]
         checks.check(
             "NewUseCaseDto" in names,
             f"US-DTO-01 the DTO is named after its use case, got {names}",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-features-dto.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-features-dto.png"))
 
         # Everything above could pass against forms that write nothing.
-        save = session.find("Save manifest", timeout=5, role="Button")
+        save = tree.wait_for_node(session, label="Save manifest", timeout=5, role="Button")
         checks.check(save is not None, "there is something to save")
         if save is not None:
-            session.click(save)
-            session.call("settle", SETTLE)
+            navigate.click(session, save, settle=False)
+            session.settle(**SETTLE)
         with open(manifest, "r", encoding="utf-8") as fh:
             written = fh.read()
         checks.check("probed_feature" in written, "US-FEAT-02 the feature is in the file")
         checks.check("new_use_case" in written, "US-FEAT-04 the use case is in the file")
         checks.check("NewUseCaseDto" in written, "US-DTO-01 the DTO is in the file")
+    except Exception as exc:
+        checks.error(f"{type(exc).__name__}: {exc}")
     finally:
         if session:
             session.close()
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
 
-    return checks.finish(PROBE, log)
+    return checks.finish()
 
 
 if __name__ == "__main__":

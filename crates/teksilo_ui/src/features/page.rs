@@ -16,6 +16,7 @@ use crate::shared::form::heading;
 use crate::shared::list_or_empty::{emptiness, empty_state, list_or_empty};
 use crate::shared::pane::FixedWidth;
 use crate::shared::reorder::ReorderableSource;
+use crate::shared::row_menu::row_menu_button;
 
 /// Width of the feature column.
 const FEATURE_COLUMN_WIDTH: f32 = 220.0;
@@ -389,19 +390,14 @@ fn pane_header(
 /// The overflow button every row carries, with one entry in it.
 ///
 /// A visible affordance as well as the right-click menu: a menu that only a
-/// right-click reveals is one most users never find. The menu is built on demand so
-/// it closes over the row it belongs to rather than over the current selection.
+/// right-click reveals is one most users never find. The menu closes over the row
+/// it belongs to rather than over the current selection.
 fn row_menu(
     label: LocalizedString,
     on_activate: impl Fn(&mut EventContext) + Clone + 'static,
 ) -> impl Widget {
-    IconButton::new(crate::icons::action::more())
-        .size(IconButtonSize::Toolbar)
-        .tooltip(tr!(common_more_actions()))
-        .context_menu(move |_pos, _ctx| {
-            let on_activate = on_activate.clone();
-            Some(Box::new(
-                MenuList::new().item(MenuItem::new(label.clone()).on_activate_fn(on_activate)),
-            ) as Box<dyn Widget>)
-        })
+    row_menu_button(move || {
+        let on_activate = on_activate.clone();
+        Box::new(MenuList::new().item(MenuItem::new(label.clone()).on_activate_fn(on_activate)))
+    })
 }

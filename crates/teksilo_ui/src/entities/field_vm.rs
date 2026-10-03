@@ -7,6 +7,7 @@
 //! the rules could only be exercised by clicking. They live here as a pure function
 //! over a plain struct instead, which is what makes every one of them testable.
 
+use crate::shared::optional_text::OptionalText;
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -349,6 +350,8 @@ pub struct FieldViewModel {
     ids: AppIds,
     list: EntityFieldsListModel,
     single: SingleField,
+    enum_name_text: OptionalText,
+    displayed_field_text: OptionalText,
     selection: KeyedSelectionModel<EntityId>,
     /// Which entity's fields are listed. Written by the Entities view-model's
     /// selection, read by the list model as its owner.
@@ -362,6 +365,8 @@ pub struct FieldViewModel {
     /// When the enum editor's typing has stopped. It reports a document version and
     /// no blur, so this is what turns a burst of keystrokes into one write.
     enum_settle: Settle,
+    enum_revision: Rc<std::cell::Cell<u64>>,
+    _enum_observer: Rc<teksilo::core::signal::ObserverHandle>,
 }
 
 impl std::fmt::Debug for FieldViewModel {
@@ -381,14 +386,26 @@ impl FieldViewModel {
         single: SingleField,
         owner: Signal<Option<EntityId>>,
     ) -> Self {
+        let enum_name_text = OptionalText::new(single.enum_name());
+        let enum_document = TextDocument::new();
+        crate::entities::field_vm::fill_enum_document(&enum_document, &single.enum_values().get());
+        let document = enum_document.clone();
+        let enum_observer = single.enum_values().observe(move |values| {
+            crate::entities::field_vm::fill_enum_document(&document, values);
+        });
+        let displayed_field_text = OptionalText::new(single.list_model_displayed_field());
         Self {
+            enum_name_text,
+            displayed_field_text,
             app_ctx,
             ids,
             list,
             single,
             selection: KeyedSelectionModel::new(SelectionMode::Single),
             owner,
-            enum_document: TextDocument::new(),
+            enum_revision: Rc::new(std::cell::Cell::new(enum_document.content_revision())),
+            enum_document,
+            _enum_observer: Rc::new(enum_observer),
             enum_settle: Settle::new(),
         }
     }
@@ -454,15 +471,11 @@ impl FieldViewModel {
     }
 
     pub fn displayed_field(&self) -> Signal<String> {
-        self.single
-            .list_model_displayed_field()
-            .map(|v| v.clone().unwrap_or_default())
+        self.displayed_field_text.signal()
     }
 
     pub fn enum_name(&self) -> Signal<String> {
-        self.single
-            .enum_name()
-            .map(|v| v.clone().unwrap_or_default())
+        self.enum_name_text.signal()
     }
 
     pub fn enum_values_text(&self) -> Signal<String> {
@@ -526,6 +539,11 @@ impl FieldViewModel {
     }
 
     /// Write the name back, on Enter or on blur.
+    pub(crate) fn flush_pending_edits(&self) {
+        self.commit_enum_values();
+        self.commit();
+    }
+
     pub fn commit(&self) {
         let stack = self.stack();
         labeled(&self.app_ctx, stack, UndoAction::EditField, || {
@@ -610,22 +628,12 @@ impl FieldViewModel {
         // would otherwise wait for whatever woke the window next.
         let wake = ctx.wake_at_handle();
         let tick = ctx.frame_tick();
-        let last_revision = Rc::new(Cell::new(self.enum_document.content_revision()));
+        let last_revision = self.enum_revision.clone();
         let me = self.clone();
         ctx.effect(&tick, move |_| me.poll_enum_editor(&last_revision, &wake));
 
-        // And the other direction: a field that is selected, reloaded or undone puts
-        // its variants into the editor.
-        // Captures the combo's signal alone, never `self`. The signal observed
-        // here belongs to the generated handle, and that handle keeps an
-        // `ObserverHandle` on it for its own dirty tracking. A closure holding
-        // the view-model would therefore hold the handle, so tearing the window
-        // down would drop the handle from inside the signal's own borrow and
-        // abort with "RefCell already borrowed" in a destructor.
-        let document = self.enum_document.clone();
-        let values = self.single.enum_values();
-        ctx.effect(&values, move |wanted| fill_enum_document(&document, wanted));
-        self.seed_enum_document();
+        // Backend refreshes seed the document through a persistent observer.
+        // Rebuilding this form must preserve text still being edited.
 
         // A different entity means a different set of fields, and the one that was
         // selected belongs to the entity being left.

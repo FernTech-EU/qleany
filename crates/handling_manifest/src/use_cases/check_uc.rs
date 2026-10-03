@@ -288,6 +288,11 @@ pub const CRITICAL_RULES: &[Rule] = &[
         severity: "critical",
         description: "Entity names must not pluralize to the same generated collection name",
     },
+    Rule {
+        id: "C49",
+        severity: "critical",
+        description: "ManyToOne and ManyToMany relationships must be weak (strong must be false)",
+    },
 ];
 
 /// Warning rules – non-blocking issues worth reviewing.
@@ -311,6 +316,11 @@ pub const WARNING_RULES: &[Rule] = &[
         id: "W05",
         severity: "warning",
         description: "A rust_* UI flag is enabled but global.language is not 'rust'",
+    },
+    Rule {
+        id: "W06",
+        severity: "warning",
+        description: "Multiple strong owning fields on one parent type require explicit relationship selection; generated create uses one owning field",
     },
 ];
 
@@ -955,6 +965,19 @@ impl CheckUseCase {
                         ));
                     }
 
+                    if field.field_type == FieldType::Entity
+                        && field.strong
+                        && matches!(
+                            field.relationship,
+                            FieldRelationshipType::ManyToOne | FieldRelationshipType::ManyToMany
+                        )
+                    {
+                        critical_errors.push(format!(
+                            "Entity '{}', field '{}': {:?} must be weak (strong must be false)",
+                            entity.name, field.name, field.relationship
+                        ));
+                    }
+
                     // Weak OneToOne/ManyToOne must be optional (dangling pointer on delete)
                     let is_to_one = matches!(
                         field.relationship,
@@ -1157,6 +1180,25 @@ impl CheckUseCase {
                             .entry(&parent.name)
                             .or_default()
                             .push(&rel.field_name);
+                    }
+                }
+            }
+
+            // Multiple fields of the same parent type are also ambiguous:
+            // generated create(owner_id) has no relationship-field parameter.
+            for (child_id, parents) in &strong_parents {
+                for (parent, fields) in parents {
+                    let unique: HashSet<_> = fields.iter().collect();
+                    if unique.len() > 1 {
+                        warnings.push(format!(
+                            "Entity '{}': multiple strong owning fields on '{}': {}",
+                            entity_by_id
+                                .get(child_id)
+                                .map(|e| e.name.as_str())
+                                .unwrap_or("?"),
+                            parent,
+                            fields.join(", ")
+                        ));
                     }
                 }
             }

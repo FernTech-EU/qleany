@@ -1,7 +1,9 @@
 files.extend-exclude = [
   "CHANGELOG.md",
   "tests",
-  "examples"
+  "examples",
+  # Installed by cargo teksilo init; maintained upstream.
+  "scripts/teksilo_probe"
 ]
 [default.extend-words]
 # Qt macros (Q_INVOKABLE, Q_PROPERTY are real Qt keywords)

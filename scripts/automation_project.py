@@ -15,12 +15,12 @@ tell the two apart. It works on a throwaway copy, so the save is real.
 """
 
 import os
-import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = ("US-PROJ-01", "US-PROJ-02", "US-PROJ-03", "US-PROJ-04")
 PROBE = "project"
@@ -42,7 +42,7 @@ def placeholder_of(session, node):
     text run and no screen reader announces it as a value. `inspect_node` returns
     the widget's own `Debug`, which does carry it.
     """
-    _, payload = session.call("inspect_node", {"node": node["id"]})
+    payload = session.tools.inspect_node(node=node["id"])
     debug = (payload or {}).get("debug", "")
     marker = 'placeholder: "'
     if marker not in debug:
@@ -52,72 +52,69 @@ def placeholder_of(session, node):
 
 
 def status_labels(session):
-    return [n.get("label") for n in session.nodes() if n.get("role") == "Status"]
+    return [n.get("label") for n in tree.nodes(session) if n.get("role") == "Status"]
 
 
 def main():
-    checks = fixture.Checks()
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{os.getpid()}.log")
-
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
-    workdir = os.path.dirname(manifest)
-
-    env = fixture.isolated_config(PROBE)
-    env["QLEANY_DEV"] = "1"
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=workdir,
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    checks = Report(PROBE)
+    app = session = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
+        workdir = os.path.dirname(manifest)
 
-        session.click(session.find("Open Qleany manifest", timeout=20))
-        session.call("settle", {"settle": {"settle_timeout_ms": 2000}})
-        session.click(session.find("Project", timeout=10))
-        session.call("settle", {"settle": {"settle_timeout_ms": 2000}})
+        env = fixture.isolated_config(PROBE)
+        env["QLEANY_DEV"] = "1"
+
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()],
+            cwd=workdir,
+            env=env, label=f"qleany-{PROBE}",
+        )
+        if tree.wait_for_node(session, label="Home", timeout=30) is None:
+            raise RuntimeError("the app never rendered its navigation rail")
+        session.settle()
+
+        navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=20), settle=False)
+        session.settle(settle_timeout_ms=2000)
+        fixture.go_to(session, "Project", settle=False)
+        session.settle(settle_timeout_ms=2000)
 
         # The screen is a named form, so a screen-reader user can jump to it.
-        form = session.find("Project settings", timeout=5, role="Form")
+        form = tree.wait_for_node(session, label="Project settings", timeout=5, role="Form")
         checks.check(form is not None, "the settings form is a named landmark")
 
         # Every field shows what the manifest holds.
         for label, expected in FROM_THE_MANIFEST.items():
-            node = session.find(label, timeout=5, role="TextInput")
+            node = tree.wait_for_node(session, label=label, timeout=5, role="TextInput")
             checks.check(
                 node is not None and node.get("value") == expected,
                 f"{label!r} reads {expected!r} from the manifest",
             )
 
-        combo = session.find("Language", timeout=5, role="ComboBox")
+        combo = tree.wait_for_node(session, label="Language", timeout=5, role="ComboBox")
         checks.check(
             combo is not None and combo.get("value") == "Rust",
             "US-PROJ-01 the language combo shows the manifest's target",
         )
 
         # US-PROJ-03: an empty prefix path names the default the backend will use.
-        prefix = session.find("Prefix path", timeout=5, role="TextInput")
-        session.call("set_value", {"node": prefix["id"], "value": ""})
-        session.call("settle", {"settle": {"settle_timeout_ms": 1500}})
-        prefix = session.find("Prefix path", timeout=5, role="TextInput")
+        prefix = tree.wait_for_node(session, label="Prefix path", timeout=5, role="TextInput")
+        session.tools.set_value(node=prefix["id"], value="")
+        session.settle(settle_timeout_ms=1500)
+        prefix = tree.wait_for_node(session, label="Prefix path", timeout=5, role="TextInput")
         checks.check(
             placeholder_of(session, prefix) == "default: crates",
             "US-PROJ-03 the placeholder names Rust's default prefix",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-project.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-project.png"))
 
         # US-PROJ-01: both targets are offered.
-        session.click(combo)
-        session.call("settle", {"settle": {"settle_timeout_ms": 1500}})
+        navigate.click(session, combo, settle=False)
+        session.settle(settle_timeout_ms=1500)
         offered = [
             n.get("label")
-            for n in session.nodes()
+            for n in tree.nodes(session)
             if n.get("role") == "ListBoxOption"
         ]
         checks.check(
@@ -127,19 +124,19 @@ def main():
 
         # Chosen with the keyboard: a list-box option publishes no click action, so
         # this is both the reachable path and the one a keyboard user takes.
-        combo = session.find("Language", timeout=5, role="ComboBox")
-        session.call("focus_node", {"node": combo["id"]})
-        session.call("inject_key", {"key": "ArrowDown"})
-        session.call("inject_key", {"key": "Enter"})
-        session.call("settle", {"settle": {"settle_timeout_ms": 2000}})
-        combo = session.find("Language", timeout=5, role="ComboBox")
+        combo = tree.wait_for_node(session, label="Language", timeout=5, role="ComboBox")
+        session.tools.focus_node(node=combo["id"])
+        session.tools.inject_key(key="ArrowDown")
+        session.tools.inject_key(key="Enter")
+        session.settle(settle_timeout_ms=2000)
+        combo = tree.wait_for_node(session, label="Language", timeout=5, role="ComboBox")
         checks.check(
             combo is not None and combo.get("value") == "C++ / Qt",
             "US-PROJ-01 choosing a target updates the combo",
         )
 
         # US-PROJ-03: and the placeholder follows it.
-        prefix = session.find("Prefix path", timeout=5, role="TextInput")
+        prefix = tree.wait_for_node(session, label="Prefix path", timeout=5, role="TextInput")
         checks.check(
             placeholder_of(session, prefix) == "default: src",
             "US-PROJ-03 the placeholder follows the chosen language",
@@ -147,15 +144,15 @@ def main():
 
         # US-PROJ-04: choosing a language is an edit, so the manifest is now dirty.
         checks.check(
-            session.find("Save manifest", timeout=5, role="Button") is not None,
+            tree.wait_for_node(session, label="Save manifest", timeout=5, role="Button") is not None,
             "US-PROJ-04 an edit marks the manifest dirty",
         )
 
         # US-PROJ-02: each required field carries its own message, as the value
         # changes rather than after a commit.
-        app_name = session.find("Application name", timeout=5, role="TextInput")
-        session.call("set_value", {"node": app_name["id"], "value": ""})
-        session.call("settle", {"settle": {"settle_timeout_ms": 1500}})
+        app_name = tree.wait_for_node(session, label="Application name", timeout=5, role="TextInput")
+        session.tools.set_value(node=app_name["id"], value="")
+        session.settle(settle_timeout_ms=1500)
         checks.check(
             "Application name is required" in status_labels(session),
             "US-PROJ-02 an empty application name says so",
@@ -165,45 +162,45 @@ def main():
             "US-PROJ-02 a field that is filled in stays quiet",
         )
 
-        org = session.find("Organisation name", timeout=5, role="TextInput")
-        session.call("set_value", {"node": org["id"], "value": "  "})
-        session.call("settle", {"settle": {"settle_timeout_ms": 1500}})
+        org = tree.wait_for_node(session, label="Organisation name", timeout=5, role="TextInput")
+        session.tools.set_value(node=org["id"], value="  ")
+        session.settle(settle_timeout_ms=1500)
         checks.check(
             "Organisation name is required" in status_labels(session),
             "US-PROJ-02 whitespace is not a name",
         )
-        session.call("set_value", {"node": org["id"], "value": "FernTech"})
-        session.call("settle", {"settle": {"settle_timeout_ms": 1500}})
+        session.tools.set_value(node=org["id"], value="FernTech")
+        session.settle(settle_timeout_ms=1500)
         checks.check(
             "Organisation name is required" not in status_labels(session),
             "US-PROJ-02 the message clears when the field is filled again",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-project-invalid.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-project-invalid.png"))
 
         # US-PROJ-04: an edit is committed when the field is finished with. Focus
         # the field, change it, then move focus away, which is the blur path; Enter
         # is the other and is exercised below.
-        app_name = session.find("Application name", timeout=5, role="TextInput")
-        session.call("focus_node", {"node": app_name["id"]})
-        session.call("set_value", {"node": app_name["id"], "value": "ProbedByBlur"})
-        org = session.find("Organisation name", timeout=5, role="TextInput")
-        session.call("focus_node", {"node": org["id"]})
-        session.call("settle", {"settle": {"settle_timeout_ms": 1500}})
+        app_name = tree.wait_for_node(session, label="Application name", timeout=5, role="TextInput")
+        session.tools.focus_node(node=app_name["id"])
+        session.tools.set_value(node=app_name["id"], value="ProbedByBlur")
+        org = tree.wait_for_node(session, label="Organisation name", timeout=5, role="TextInput")
+        session.tools.focus_node(node=org["id"])
+        session.settle(settle_timeout_ms=1500)
 
-        domain = session.find("Organisation domain", timeout=5, role="TextInput")
-        session.call("focus_node", {"node": domain["id"]})
-        session.call("set_value", {"node": domain["id"], "value": "eu.probed"})
-        session.call("inject_key", {"key": "Enter"})
-        session.call("settle", {"settle": {"settle_timeout_ms": 1500}})
+        domain = tree.wait_for_node(session, label="Organisation domain", timeout=5, role="TextInput")
+        session.tools.focus_node(node=domain["id"])
+        session.tools.set_value(node=domain["id"], value="eu.probed")
+        session.tools.inject_key(key="Enter")
+        session.settle(settle_timeout_ms=1500)
 
         # Write it out, then read the file. This is the assertion the form itself
         # cannot make: an uncommitted edit reads back from the widget either way.
-        save = session.find("Save manifest", timeout=5, role="Button")
+        save = tree.wait_for_node(session, label="Save manifest", timeout=5, role="Button")
         checks.check(save is not None, "US-PROJ-04 there is something to save")
         if save is not None:
-            session.click(save)
-            session.call("settle", {"settle": {"settle_timeout_ms": 3000}})
+            navigate.click(session, save, settle=False)
+            session.settle(settle_timeout_ms=3000)
 
         with open(manifest, "r", encoding="utf-8") as fh:
             written = fh.read()
@@ -219,16 +216,17 @@ def main():
             "language: cpp-qt" in written,
             "US-PROJ-01 the combo writes the code, not the label",
         )
+    except Exception as exc:
+        checks.error(f"{type(exc).__name__}: {exc}")
     finally:
         if session:
             session.close()
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
 
-    return checks.finish(PROBE, log)
+    return checks.finish()
 
 
 if __name__ == "__main__":

@@ -238,7 +238,7 @@ entities:
   - name: entities
     type: entity
     entity: Entity
-    relationship: ordered_one_to_many
+    relationship: many_to_many
     list_model: true
     list_model_displayed_field: name
   - name: undoable

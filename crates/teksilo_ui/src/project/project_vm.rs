@@ -191,7 +191,7 @@ impl ProjectViewModel {
 
     // ── wiring ───────────────────────────────────────────────────────────────
 
-    /// Install the subscriptions. Called from `build`, on **every** build: an effect
+    /// Install the subscriptions from `App::build`, on **every** build: an effect
     /// registered on a `BuildContext` lives exactly one build cycle, so a guard here
     /// would leave the screen deaf after the first rebuild.
     pub fn wire(&self, ctx: &mut BuildContext) {

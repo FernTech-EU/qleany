@@ -326,11 +326,27 @@ When `type: entity`, additional options define the relationship:
 
 | Relationship          | Junction Type       | Return Type (C++ / Rust)             |
 |-----------------------|---------------------|--------------------------------------|
-| `one_to_one`          | OneToOne            | `std::optional<int>` / `Option<i64>` |
-| `many_to_one`         | ManyToOne           | `std::optional<int>` / `Option<i64>` |
-| `one_to_many`         | UnorderedOneToMany  | `QList<int>` / `Vec<i64>`            |
-| `ordered_one_to_many` | OrderedOneToMany    | `QList<int>` / `Vec<i64>`            |
-| `many_to_many`        | UnorderedManyToMany | `QList<int>` / `Vec<i64>`            |
+| `one_to_one`          | OneToOne            | `std::optional<int>` / `Option<EntityId>` |
+| `many_to_one`         | ManyToOne           | `std::optional<int>` / `Option<EntityId>` |
+| `one_to_many`         | UnorderedOneToMany  | `QList<int>` / `Vec<EntityId>`            |
+| `ordered_one_to_many` | OrderedOneToMany    | `QList<int>` / `Vec<EntityId>`            |
+| `many_to_many`        | UnorderedManyToMany | `QList<int>` / `Vec<EntityId>`            |
+
+In Rust, `EntityId` is `u64`; to-one fields use `EntityId` when required and
+`Option<EntityId>` when `optional: true`. Junctions are in-memory maps from source IDs
+into target-ID vectors; the junction type names above describe the C++/Qt
+implementation. `one_to_many` and `many_to_many` both return vectors, but differ
+in cardinality: a target may occur under only one source in a given one-to-many
+relationship, while many-to-many permits sharing. Neither permits duplicate
+links within a source. These rules apply independently of `strong`.
+
+Only `ordered_one_to_many` supports reordering. Rust relationship setters reject
+missing targets, duplicate links, and conflicting one-to-many assignments.
+A repository-level `set_relationship_multi` batch is checked as a whole, so a valid transfer can clear the old
+source and assign the new source in one batch. Invalid batches change nothing.
+`move_relationship` requires distinct IDs already in that ordered relationship;
+it cannot attach new IDs. Unordered vector iteration order is not an ordering
+contract.
 
 ### Relationship Flags
 
@@ -358,16 +374,17 @@ Rust CLI and Slint targets ignore them.
 | `optional` | ✓/✗            | ✓/✗           | N.A.          | N.A.                  | N.A.           |
 | `strong`   | ✓/✗ (see note) | N.A.          | ✓/✗           | ✓/✗                   | N.A.           |
 
-N.A.: Not applicable for this relationship type. There will be no change in generated code, or don't use them. When you write code, an empty list expresses the intent to hold no relationship.
+N.A.: Omit the flag or set it to `false`; `true` is rejected for these relationship
+types. An empty list expresses the intent to hold no to-many relationship.
 
 Note: If one_to_one holds a weak relationship (`strong: false`), it couldn't be required (so, it must be `optional: true`). There is the risk of a dangling reference if the entity targeted by the reference is deleted.
 
 The `optional` column is enforced by `qleany check`, which also runs before generation: a weak
 `one_to_one` or `many_to_one` that isn't optional is rejected by rule **C43**, and a to-many
-relationship marked `optional` by rule **C32**. The `strong` column records what the generator
-does with the flag, not something `check` rejects. Every rule has a stable id; type
-`qleany check --rules` for the full catalogue (49 critical and 4 warning rules at the time of
-writing). Any critical error aborts `qleany generate`.
+relationship marked `optional` by rule **C32**. Rule **C49** rejects `strong: true` on
+`many_to_one` and `many_to_many`; **W06** warns about multiple strong owning fields
+on one parent type. Every rule has a stable id; type `qleany check --rules` for the
+current catalogue. Any critical error aborts `qleany generate`.
 
 ---
 
@@ -421,8 +438,8 @@ The reality in Qleany is a bit more nuanced, but this mental model helps underst
 
 Like said earlier, the reality is a bit more nuanced:
 - Special junction tables are used for all relationships (even the simpler ones) and "sit" between parent and child tables
-- These junction tables can be accessed by parent and child tables equally.
-- This means that for every relationship, both sides can see each other (no true "back-reference" concept)
+- Rust generates public relationship fields for the declared forward direction.
+- Backward relationship metadata is used internally for deletion cleanup and undo; it does not automatically generate a reverse field or a reverse-navigation controller API. C++/Qt junction helpers expose both directions.
 - The relationship type defines how the junction table behaves, and how the parent and child entities see each other.
 - In the deeper code, there is always the mentions of a left entity and a right entity (parent and child respectively in the mental model).
 
@@ -436,7 +453,7 @@ This may be easier to understand: all relationships are defined from the perspec
 
 The cost is storage overhead. A `one_to_one` that could be a single foreign key column gets its own junction table instead. For a desktop or mobile application with hundreds or thousands of entities, you will never notice. For a web backend serving millions of rows, you would care, but that's not what Qleany targets.
 
-The payoff is uniformity. Every relationship, regardless of type, goes through the same junction table infrastructure. This means one code path for snapshot/restore (which is what makes undo/redo work on entity trees), one code path for bidirectional navigation (both sides can always see each other), and one code path for the generator to produce. No special cases, no "this relationship is simple enough for a foreign key but that one needs a junction table." The complexity stays in the infrastructure, not in your head.
+The payoff is uniformity. Every relationship, regardless of type, goes through the same junction table infrastructure. This means one code path for snapshot/restore (which is what makes undo/redo work on entity trees), shared internal machinery for finding incoming references, and one code path for the generator to produce. No special cases, no "this relationship is simple enough for a foreign key but that one needs a junction table." The complexity stays in the infrastructure, not in your head.
 
 Yes, database engineers might cringe at this, but this greatly simplifies the code generation and the overall mental model when designing your entities. They can cringe more when I say there is no notion of foreign keys in Qleany internal database.
 
@@ -500,7 +517,7 @@ There is no `ordered_many_to_many` because I'm not mad enough to handle that com
 
 ### Weak Relationships
 
-Both `many_to_one` and `many_to_many` are always weak — they reference entities owned elsewhere. They cannot have `strong: true`. In Qleany, the owning side (with a `strong` relationship) controls cascade deletion. For `many_to_one` and `many_to_many`, theoretically, it would mean that a child would be deleted only if there was no parent left to "own" it. Too difficult to implement, so no.
+Rule **C49** requires `strong: false` for both `many_to_one` and `many_to_many`. They are always weak — they reference entities owned elsewhere. They cannot have `strong: true`. In Qleany, the owning side (with a `strong` relationship) controls cascade deletion. For `many_to_one` and `many_to_many`, theoretically, it would mean that a child would be deleted only if there was no parent left to "own" it. Too difficult to implement, so no.
 
 Dev note: theoretically, you can play with the junction table code base to support many_to_one with strong ownership, but that would be a nightmare to maintain and reason about.
 
@@ -528,6 +545,7 @@ entities:
         type: entity
         entity: Binder
         relationship: many_to_one
+        optional: true
 
       - name: tags                        # Shared reference (weak many-to-many)
         type: entity
@@ -668,3 +686,20 @@ and `qleany check` reports it as warning **W05**.
 
 Every single and list model carries a mock twin behind the crate's `mocks`
 feature, so the UI can be run against fabricated data with no backend.
+
+For Teksilo relationship models, `create()`, `update()` and `remove()` are emitted
+only for the target's exact strong owning field. `remove()` deletes the target
+entity; it is not an unlink operation. Weak `one_to_many` and `many_to_many`
+models expose reads and refreshes, with no ownership mutations. Use the source
+entity's frontend `set_*_relationship` command to replace the linked IDs when
+attaching or detaching existing targets, and the target's update command to edit
+its data. An owner `Updated` or target change refreshes the model. Only
+`ordered_one_to_many` models expose `move_to()`.
+
+Warning **W06** flags multiple strong fields owning the same target type from
+one parent type: the generated creation API accepts an owner ID, not an
+owning-field selector, and uses one of those fields. Advanced callers can create
+an orphan and explicitly attach it to the desired owning field. A generated
+Teksilo list exposes ownership mutations only on the selected owning field.
+Different parent types competing to own a target are rejected by the existing
+ownership check.

@@ -19,14 +19,14 @@ a user closes the window from the wrong screen.
 import os
 import subprocess
 import sys
-import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, tree, ProbeError
 
 STORIES = ("US-SAFE-04",)
 PROBE = "quit"
-SETTLE = {"settle": {"settle_timeout_ms": 3000}}
+SETTLE = {"settle_timeout_ms": 3000}
 
 # Every screen the rail offers. Generate is included even though it is gated on a
 # clean manifest, because Qleany's own validates.
@@ -34,7 +34,7 @@ SCREENS = ["Home", "Project", "Entities", "Features", "User Interface", "Generat
 
 
 def window_close(session):
-    for node in session.nodes():
+    for node in tree.nodes(session):
         if node.get("role") == "Button" and node.get("label") == "Close":
             return node
     return None
@@ -42,73 +42,61 @@ def window_close(session):
 
 def quit_from(screen, checks):
     """Open the manifest, go to `screen`, close the window, report the exit."""
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{screen}-{os.getpid()}.log")
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), f"{PROBE}-{screen}")
-    env = fixture.isolated_config(f"{PROBE}-{screen}")
-    env["QLEANY_DEV"] = "1"
-    env["RUST_BACKTRACE"] = "1"
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=os.path.dirname(manifest),
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    app = session = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
-        session.click(session.find("Open Qleany manifest", timeout=10))
-        session.call("settle", SETTLE)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), f"{PROBE}-{screen}")
+        env = fixture.isolated_config(f"{PROBE}-{screen}")
+        env["QLEANY_DEV"] = "1"
+        env["RUST_BACKTRACE"] = "1"
 
-        target = session.find(screen, timeout=10)
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()], cwd=os.path.dirname(manifest),
+            env=env, label=f"qleany-{PROBE}-{screen}",
+        )
+        navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=30), settle=False)
+        session.settle(**SETTLE)
+        target = tree.wait_for_node(session, label=screen, timeout=10)
         if not checks.check(target is not None, f"{screen}: the rail row is reachable"):
             return
-        session.click(target)
-        session.call("settle", SETTLE)
-
+        navigate.click(session, target)
         close = window_close(session)
         if not checks.check(close is not None, f"{screen}: the window has a close button"):
             return
-        # The window is gone after this, so the reply never arrives.
+        # Drive the title-bar pointer route, as in the dialog example.
+        # Closing the window can disconnect MCP before it replies. Only that
+        # shutdown call may fail; the actual process exit is the assertion.
         try:
-            session.call("invoke_action", {"node": close["id"], "action": "click"})
-        except Exception:
-            pass
+            x, y = tree.center(close)
+            session.tools.inject_pointer(x=x, y=y, action="click")
+        except ProbeError as exc:
+            checks.note(f"{screen}: close disconnected MCP: {exc}")
+        try:
+            code = app.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            checks.check(False, f"US-SAFE-04 {screen}: the process exits after closing")
+            checks.note(f"{screen}: remaining UI: {tree.labels(session)}")
+        else:
+            checks.check(
+                code == 0,
+                f"US-SAFE-04 {screen}: quitting exits cleanly, got {code}"
+                + (" (SIGABRT, look for 'panic in a destructor')" if code == -6 else ""),
+            )
+    except Exception as exc:
+        checks.error(f"{screen}: {type(exc).__name__}: {exc}")
     finally:
         if session:
-            try:
-                session.close()
-            except Exception:
-                pass
-        # `close()` above terminated the MCP client, not the app. Give the app a
-        # moment to finish its own shutdown before deciding how it went.
-        deadline = time.time() + 10
-        while app.poll() is None and time.time() < deadline:
-            time.sleep(0.2)
-        code = app.poll()
-        if code is None:
-            app.kill()
-            app.wait(timeout=5)
-            checks.check(False, f"US-SAFE-04 {screen}: the window closed and the process exited")
-            return
-
-    # A panic in a destructor aborts: SIGABRT is -6, and a clean exit is 0.
-    checks.check(
-        code == 0,
-        f"US-SAFE-04 {screen}: quitting exits cleanly, got {code}"
-        + (" (SIGABRT, look for 'panic in a destructor')" if code == -6 else ""),
-    )
-    if code != 0:
-        print(fixture._tail(log, 12))
+            session.close()
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
 
 
 def main():
-    checks = fixture.Checks()
+    checks = Report(PROBE)
     for screen in SCREENS:
         quit_from(screen, checks)
-    return checks.finish(PROBE)
+    return checks.finish()
 
 
 if __name__ == "__main__":

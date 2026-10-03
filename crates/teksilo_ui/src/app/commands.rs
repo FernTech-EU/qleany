@@ -108,15 +108,15 @@ fn register_undo(ctx: &mut BuildContext, deps: &CommandDeps) {
     ctx.register_shortcut_global(
         Shortcut::new(name::UNDO)
             .intent(name::UNDO)
-            .primary(KeyStroke::ctrl(Key::Character('z')))
+            .primary(KeyStroke::ctrl(Key::Z))
             .enabled_when(deps.parts.can_undo.clone())
             .build(),
     );
     ctx.register_shortcut_global(
         Shortcut::new(name::REDO)
             .intent(name::REDO)
-            .primary(KeyStroke::ctrl_shift(Key::Character('z')))
-            .secondary(KeyStroke::ctrl(Key::Character('y')))
+            .primary(KeyStroke::ctrl_shift(Key::Z))
+            .secondary(KeyStroke::ctrl(Key::Y))
             .enabled_when(deps.parts.can_redo.clone())
             .build(),
     );
@@ -221,13 +221,13 @@ fn register_manifest(ctx: &mut BuildContext, deps: &CommandDeps) {
     ctx.register_shortcut_global(
         Shortcut::new(name::OPEN_MANIFEST)
             .intent(name::OPEN_MANIFEST)
-            .primary(KeyStroke::ctrl(Key::Character('o')))
+            .primary(KeyStroke::ctrl(Key::O))
             .build(),
     );
     ctx.register_shortcut_global(
         Shortcut::new(name::SAVE_MANIFEST)
             .intent(name::SAVE_MANIFEST)
-            .primary(KeyStroke::ctrl(Key::Character('s')))
+            .primary(KeyStroke::ctrl(Key::S))
             .enabled_when(can_save)
             .build(),
     );

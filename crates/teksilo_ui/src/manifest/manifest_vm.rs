@@ -3,16 +3,19 @@
 //! This is the one view-model the shell depends on: the window title, the Save
 //! button, the navigation rail and every File menu row read its signals.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
+use teksilo::core::signal::ObserverHandle;
 
 use teksilo::platform::file_dialog::{FileDialogRequest, FileDialogResult};
 use teksilo::prelude::*;
 
 use frontend::AppContext;
 use frontend::commands::{handling_manifest_commands, undo_redo_commands};
-use frontend::common::event::{DirectAccessEntity, EntityEvent, Event, Origin};
+use frontend::common::event::{
+    DirectAccessEntity, EntityEvent, Event, HandlingManifestEvent, Origin,
+};
 use frontend::handling_manifest::dtos::{LoadDto, SaveDto};
 
 use crate::app_ids::AppIds;
@@ -60,18 +63,28 @@ const DIRTYING_ENTITIES: &[DirectAccessEntity] = &[
 /// for an event that is never coming.
 const SETTLE_START_GRACE: Duration = Duration::from_millis(250);
 
+struct PendingEdits {
+    // Keep the derived input alive along with its subscription.
+    _dirty: Signal<bool>,
+    _observer: ObserverHandle,
+    commit: Box<dyn Fn()>,
+}
+
 #[derive(Clone)]
 pub struct ManifestViewModel {
     app_ctx: Rc<AppContext>,
     ids: AppIds,
     is_open: Signal<bool>,
     is_saved: Signal<bool>,
+    pending_dirty: Signal<bool>,
+    pending_edits: Rc<RefCell<Option<PendingEdits>>>,
     path: Signal<String>,
     busy: Signal<bool>,
     error: Signal<Option<LocalizedString>>,
     success: Signal<Option<LocalizedString>>,
     /// A dirtying event arrived since the last frame.
     saw_edit: Rc<Cell<bool>>,
+    pending_save_events: Rc<Cell<usize>>,
     /// A load or a close is draining its event burst; the manifest is clean once
     /// the burst goes quiet. See `wire` for why this cannot simply be a flag set
     /// before the command and cleared after it.
@@ -104,11 +117,14 @@ impl ManifestViewModel {
             ids,
             is_open: Signal::new(false),
             is_saved: Signal::new(true),
+            pending_dirty: Signal::new(false),
+            pending_edits: Rc::new(RefCell::new(None)),
             path: Signal::new(String::new()),
             busy: Signal::new(false),
             error: Signal::new(None),
             success: Signal::new(None),
             saw_edit: Rc::new(Cell::new(false)),
+            pending_save_events: Rc::new(Cell::new(0)),
             settling_clean: Rc::new(Cell::new(false)),
             settling_until: Rc::new(Cell::new(None)),
             settle_saw_any: Rc::new(Cell::new(false)),
@@ -122,7 +138,24 @@ impl ManifestViewModel {
     }
 
     pub fn is_saved(&self) -> Signal<bool> {
-        self.is_saved.clone()
+        self.is_saved
+            .zip(&self.pending_dirty)
+            .map(|(saved, pending)| *saved && !*pending)
+    }
+
+    /// Include uncommitted editor buffers in Save/close state. Save flushes these
+    /// before serializing, including when invoked by a shortcut without blur.
+    pub(crate) fn track_pending_edits(&self, dirty: Signal<bool>, commit: impl Fn() + 'static) {
+        self.pending_dirty.set_if_changed(dirty.get());
+        let pending = self.pending_dirty.clone();
+        let observer = dirty.observe(move |value| {
+            pending.set_if_changed(*value);
+        });
+        *self.pending_edits.borrow_mut() = Some(PendingEdits {
+            _dirty: dirty,
+            _observer: observer,
+            commit: Box::new(commit),
+        });
     }
 
     pub fn busy(&self) -> Signal<bool> {
@@ -144,7 +177,7 @@ impl ManifestViewModel {
     /// There is something to write, and nothing in the way of writing it.
     pub fn can_save(&self) -> Signal<bool> {
         self.is_open
-            .zip(&self.is_saved)
+            .zip(&self.is_saved())
             .zip(&self.busy)
             .map(|((open, saved), busy)| *open && !*saved && !*busy)
     }
@@ -205,18 +238,36 @@ impl ManifestViewModel {
 
     /// Write the manifest back to the path it came from.
     pub fn save(&self) {
+        let _ = self.try_save();
+    }
+
+    /// Save and report whether a pending close or replacement may proceed.
+    pub fn try_save(&self) -> Result<(), String> {
         let path = self.path.get();
         if path.is_empty() {
             // Nothing to write over. The caller is expected to run the Save-as flow
             // instead; saying so is better than writing somewhere arbitrary.
-            self.fail("this manifest has no path yet; use Save as");
-            return;
+            let message = "this manifest has no path yet; use Save as";
+            self.fail(message);
+            return Err(message.to_string());
         }
-        self.save_to(&path);
+        self.try_save_to(&path)
     }
 
     /// Write the manifest to a chosen path, which becomes its path.
     pub fn save_to(&self, path: &str) {
+        let _ = self.try_save_to(path);
+    }
+
+    fn try_save_to(&self, path: &str) -> Result<(), String> {
+        if let Some(pending) = self.pending_edits.borrow().as_ref() {
+            (pending.commit)();
+        }
+        if self.pending_dirty.get() {
+            let message = "could not apply pending editor changes";
+            self.fail(message);
+            return Err(message.to_string());
+        }
         self.busy.set(true);
         let result = handling_manifest_commands::save(
             &self.app_ctx,
@@ -228,11 +279,28 @@ impl ManifestViewModel {
         match result {
             Ok(()) => {
                 self.path.set(path.to_string());
+                // A FIFO marker separates the writes just serialized from later
+                // edits. A time-based grace period could swallow a fast new edit.
+                self.settling_clean.set(false);
+                self.settling_until.set(None);
+                self.saw_edit.set(false);
                 self.is_saved.set(true);
+                self.pending_save_events
+                    .set(self.pending_save_events.get() + 1);
+                self.app_ctx.event_hub.send_event(Event {
+                    origin: Origin::HandlingManifest(HandlingManifestEvent::Save),
+                    ids: Vec::new(),
+                    data: None,
+                });
                 self.success.set(Some(tr!(status_manifest_saved())));
                 self.error.set(None);
+                Ok(())
             }
-            Err(e) => self.fail(&e.to_string()),
+            Err(e) => {
+                let message = e.to_string();
+                self.fail(&message);
+                Err(message)
+            }
         }
     }
 
@@ -296,13 +364,21 @@ impl ManifestViewModel {
         let wake = ctx.wake_at_handle();
 
         for entity in DIRTYING_ENTITIES {
-            let saw_edit = self.saw_edit.clone();
+            let me = self.clone();
             let wake = wake.clone();
             ctx.subscribe_event(Origin::DirectAccess(entity.clone()), move |_e: &Event| {
-                saw_edit.set(true);
+                me.record_backend_edit();
                 wake.set(Some(std::time::Instant::now()));
             });
         }
+
+        let saves = self.pending_save_events.clone();
+        ctx.subscribe_event(
+            Origin::HandlingManifest(HandlingManifestEvent::Save),
+            move |_: &Event| {
+                saves.set(saves.get().saturating_sub(1));
+            },
+        );
 
         let tick = ctx.frame_tick();
         let me = self.clone();
@@ -317,6 +393,12 @@ impl ManifestViewModel {
                 settle_wake.set(Some(until));
             }
         });
+    }
+
+    fn record_backend_edit(&self) {
+        if self.pending_save_events.get() == 0 {
+            self.saw_edit.set(true);
+        }
     }
 
     /// One frame's worth of the dirty state machine.
@@ -688,5 +770,67 @@ mod tests {
         }
         assert_eq!(ids.global_id.get(), None);
         assert!(!vm.is_open().get());
+    }
+}
+
+#[cfg(all(test, not(feature = "mocks")))]
+mod pending_edit_tests {
+    use super::*;
+    use crate::singles::SingleGlobal;
+    use crate::test_support::Fixture;
+    use frontend::handling_manifest::dtos::CreateLanguage;
+
+    #[test]
+    fn uncommitted_text_enables_save_and_is_flushed_before_serialization() {
+        let f = Fixture::new(CreateLanguage::Rust);
+        let global = SingleGlobal::new(f.ctx.clone());
+        global.set_id(f.ids.global_id.get());
+        assert_eq!(global.application_name().get(), "Regression");
+        let editor = global.clone();
+        f.manifest
+            .track_pending_edits(global.dirty(), move || editor.save(None));
+        assert!(!f.manifest.can_save().get());
+        global.application_name().set("PendingName".to_string());
+        assert!(
+            f.manifest.can_save().get(),
+            "typing must enable Save before blur"
+        );
+        assert!(!f.manifest.is_saved().get());
+        f.manifest.try_save().unwrap();
+        assert!(
+            std::fs::read_to_string(&f.path)
+                .unwrap()
+                .contains("PendingName")
+        );
+        assert!(!global.dirty().get());
+        assert!(f.manifest.is_saved().get());
+        assert!(!f.manifest.can_save().get());
+    }
+
+    #[test]
+    fn save_events_do_not_hide_the_next_edit() {
+        let f = Fixture::new(CreateLanguage::Rust);
+        f.manifest.try_save().unwrap();
+        // Writes preceding Save's FIFO marker are already on disk.
+        f.manifest.record_backend_edit();
+        f.manifest.settle_dirty();
+        assert!(f.manifest.is_saved().get());
+        // Deliver the marker, then a new edit, without waiting for a grace period.
+        f.manifest.pending_save_events.set(0);
+        f.manifest.record_backend_edit();
+        f.manifest.settle_dirty();
+        assert!(f.manifest.can_save().get());
+    }
+
+    #[test]
+    fn failed_pending_commit_does_not_save_old_values_or_clear_dirty_state() {
+        let f = Fixture::new(CreateLanguage::Rust);
+        let before = std::fs::read(&f.path).unwrap();
+        let dirty = Signal::new(true);
+        f.manifest.track_pending_edits(dirty, || {});
+        assert!(f.manifest.try_save().is_err());
+        assert_eq!(std::fs::read(&f.path).unwrap(), before);
+        assert!(f.manifest.can_save().get());
+        assert!(!f.manifest.is_saved().get());
     }
 }

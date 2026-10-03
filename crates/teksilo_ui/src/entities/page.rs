@@ -17,6 +17,7 @@ use crate::shared::form::heading;
 use crate::shared::list_or_empty::{emptiness, empty_state, list_or_empty};
 use crate::shared::pane::FixedWidth;
 use crate::shared::reorder::ReorderableSource;
+use crate::shared::row_menu::row_menu_button;
 
 /// Width of the entity column. Wide enough for a long PascalCase name beside its
 /// overflow button without eliding.
@@ -370,18 +371,4 @@ fn pane_header_enabled(
             }
         }
     )
-}
-
-/// The overflow button every row carries.
-///
-/// A visible affordance as well as the right-click menu: a menu that only a
-/// right-click reveals is one most users never find. The menu is built on demand so
-/// it closes over the row it belongs to rather than over the current selection.
-fn row_menu_button(menu: impl Fn() -> Box<dyn Widget> + 'static) -> impl Widget {
-    IconButton::new(crate::icons::action::more())
-        .size(IconButtonSize::Toolbar)
-        // The tooltip is also the button's accessible name, so this is what a screen
-        // reader announces for the row's overflow.
-        .tooltip(tr!(common_more_actions()))
-        .context_menu(move |_pos, _ctx| Some(menu()))
 }

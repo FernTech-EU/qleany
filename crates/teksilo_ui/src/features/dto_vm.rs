@@ -8,6 +8,7 @@
 //! ones that nobody wired would be permanently deaf and merely look empty. Each pane
 //! therefore builds its own and wires them from its own `wire`.
 
+use crate::shared::optional_text::OptionalText;
 use std::rc::Rc;
 
 use teksilo::data::{KeyedSelectionModel, SelectionMode};
@@ -155,9 +156,12 @@ pub struct DtoViewModel {
     enabled: Signal<bool>,
     fields: DtoFieldsListModel,
     field: SingleDtoField,
+    enum_name_text: OptionalText,
     selection: KeyedSelectionModel<EntityId>,
     enum_document: TextDocument,
     enum_settle: Settle,
+    enum_revision: Rc<std::cell::Cell<u64>>,
+    _enum_observer: Rc<teksilo::core::signal::ObserverHandle>,
 }
 
 impl std::fmt::Debug for DtoViewModel {
@@ -178,10 +182,19 @@ impl DtoViewModel {
         use_case_name: Signal<String>,
     ) -> Self {
         let dto_id: Signal<Option<EntityId>> = Signal::new(None);
+        let field = SingleDtoField::new(app_ctx.clone());
+        let enum_name_text = OptionalText::new(field.enum_name());
+        let enum_document = TextDocument::new();
+        crate::entities::field_vm::fill_enum_document(&enum_document, &field.enum_values().get());
+        let document = enum_document.clone();
+        let enum_observer = field.enum_values().observe(move |values| {
+            crate::entities::field_vm::fill_enum_document(&document, values);
+        });
         Self {
+            enum_name_text,
             dto: SingleDto::new(app_ctx.clone()),
             fields: DtoFieldsListModel::new(app_ctx.clone(), dto_id.clone()),
-            field: SingleDtoField::new(app_ctx.clone()),
+            field,
             app_ctx,
             ids,
             side,
@@ -190,12 +203,27 @@ impl DtoViewModel {
             dto_id,
             enabled: Signal::new(false),
             selection: KeyedSelectionModel::new(SelectionMode::Single),
-            enum_document: TextDocument::new(),
+            enum_revision: Rc::new(std::cell::Cell::new(enum_document.content_revision())),
+            enum_document,
+            _enum_observer: Rc::new(enum_observer),
             enum_settle: Settle::new(),
         }
     }
 
     // ── state a view binds ───────────────────────────────────────────────────
+
+    pub(crate) fn pending_dirty(&self) -> Signal<bool> {
+        self.dto
+            .dirty()
+            .zip(&self.field.dirty())
+            .map(|(dto, field)| *dto || *field)
+    }
+
+    pub(crate) fn flush_pending_edits(&self) {
+        self.commit_enum_values();
+        self.commit_name();
+        self.commit_field();
+    }
 
     pub fn side(&self) -> DtoSide {
         self.side
@@ -261,9 +289,7 @@ impl DtoViewModel {
     }
 
     pub fn field_enum_name(&self) -> Signal<String> {
-        self.field
-            .enum_name()
-            .map(|v| v.clone().unwrap_or_default())
+        self.enum_name_text.signal()
     }
 
     pub fn field_enum_name_validation(&self) -> Signal<ValidationState> {
@@ -512,22 +538,12 @@ impl DtoViewModel {
         // revision and no blur, so the commit waits for typing to stop.
         let wake = ctx.wake_at_handle();
         let tick = ctx.frame_tick();
-        let last_revision = Rc::new(std::cell::Cell::new(self.enum_document.content_revision()));
+        let last_revision = self.enum_revision.clone();
         let me = self.clone();
         ctx.effect(&tick, move |_| me.poll_enum_editor(&last_revision, &wake));
 
-        // Captures the combo's signal alone, never `self`. The signal observed
-        // here belongs to the generated handle, and that handle keeps an
-        // `ObserverHandle` on it for its own dirty tracking. A closure holding
-        // the view-model would therefore hold the handle, so tearing the window
-        // down would drop the handle from inside the signal's own borrow and
-        // abort with "RefCell already borrowed" in a destructor.
-        let document = self.enum_document.clone();
-        let values = self.field.enum_values();
-        ctx.effect(&values, move |wanted| {
-            crate::entities::field_vm::fill_enum_document(&document, wanted)
-        });
-        self.seed_enum_document();
+        // Backend refreshes seed the document through a persistent observer.
+        // Rebuilding this form must preserve text still being edited.
     }
 
     fn link(&self, use_case: EntityId, dtos: Vec<EntityId>) -> anyhow::Result<()> {

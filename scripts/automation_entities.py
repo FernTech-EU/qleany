@@ -14,12 +14,12 @@ they belong once they have one.
 """
 
 import os
-import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = (
     "US-ENT-01", "US-ENT-02", "US-ENT-03", "US-ENT-04", "US-ENT-05", "US-ENT-06",
@@ -28,7 +28,7 @@ STORIES = (
 PROBE = "entities"
 SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
 
-SETTLE = {"settle": {"settle_timeout_ms": 3000}}
+SETTLE = {"settle_timeout_ms": 3000}
 
 
 #: Where each column starts. Three lists on one screen all publish
@@ -47,7 +47,7 @@ def in_column(node, column):
 def rows(session, column=ENTITY_COLUMN):
     """The rows of one list, in order, excluding any open dropdown."""
     listed = [
-        n for n in session.nodes()
+        n for n in tree.nodes(session)
         if n.get("role") == "ListBoxOption" and in_column(n, column)
     ]
     return sorted(listed, key=lambda n: n.get("bounds", {}).get("y", 0))
@@ -60,29 +60,29 @@ def dropdown_options(session, node):
     `ListBoxOption`, so the dropdown is identified as the options that were not
     there a moment ago rather than by role or by position.
     """
-    before = {n["id"] for n in session.nodes() if n.get("role") == "ListBoxOption"}
-    session.click(node)
-    session.call("settle", SETTLE)
+    before = {n["id"] for n in tree.nodes(session) if n.get("role") == "ListBoxOption"}
+    navigate.click(session, node, settle=False)
+    session.settle(**SETTLE)
     fresh = [
-        n for n in session.nodes()
+        n for n in tree.nodes(session)
         if n.get("role") == "ListBoxOption" and n["id"] not in before and n.get("label")
     ]
     offered = [
         n.get("label")
         for n in sorted(fresh, key=lambda n: n.get("bounds", {}).get("y", 0))
     ]
-    session.call("inject_key", {"key": "Escape"})
-    session.call("settle", SETTLE)
+    session.tools.inject_key(key="Escape")
+    session.settle(**SETTLE)
     return offered
 
 
 def statuses(session):
-    return [n.get("label") for n in session.nodes() if n.get("role") == "Status"]
+    return [n.get("label") for n in tree.nodes(session) if n.get("role") == "Status"]
 
 
 def form_labels(session):
     """Every label the two forms show, which is how the visibility rules are read."""
-    return [n.get("value") for n in session.nodes() if n.get("role") == "Label"]
+    return [n.get("value") for n in tree.nodes(session) if n.get("role") == "Label"]
 
 
 def texts(session):
@@ -92,7 +92,7 @@ def texts(session):
     the row's rendering, not a separate semantic node.
     """
     out = []
-    for n in session.nodes():
+    for n in tree.nodes(session):
         for key in ("label", "value", "description"):
             if n.get(key):
                 out.append(n[key])
@@ -100,14 +100,14 @@ def texts(session):
 
 
 def combo(session, label):
-    for n in session.nodes():
+    for n in tree.nodes(session):
         if n.get("role") == "ComboBox" and n.get("label") == label:
             return n
     return None
 
 
 def text_input(session, label, value=None):
-    for n in session.nodes():
+    for n in tree.nodes(session):
         if n.get("role") == "TextInput" and n.get("label") == label:
             if value is None or n.get("value") == value:
                 return n
@@ -120,7 +120,8 @@ def set_combo(session, label, wanted, limit=24):
     One step at a time, re-finding the combo each time. A list-box option
     publishes no click action, so the keyboard is the only way in; and each change
     rebuilds the form around it, which destroys the node that had focus, so a
-    burst of arrow keys sent to one node only moves once.
+    burst of arrow keys sent to one node only moves once. Enter commits the
+    highlighted option before the next iteration re-finds the rebuilt combo.
 
     The direction flips when a key stops changing anything: a combo does not wrap
     at either end, so walking down from a value below the target never arrives.
@@ -138,39 +139,37 @@ def set_combo(session, label, wanted, limit=24):
             # That key moved nothing: this end of the list. Turn around.
             key = "ArrowUp" if key == "ArrowDown" else "ArrowDown"
         last = value
-        session.call("focus_node", {"node": node["id"]})
-        session.call("inject_key", {"key": key})
-        session.call("settle", SETTLE)
+        session.tools.focus_node(node=node["id"])
+        session.tools.inject_key(key=key)
+        session.tools.inject_key(key="Enter")
+        session.settle(**SETTLE)
     node = combo(session, label)
     return node is not None and node.get("value") == wanted
 
 
 def main():
-    checks = fixture.Checks()
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{os.getpid()}.log")
-
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
-    workdir = os.path.dirname(manifest)
-
-    env = fixture.isolated_config(PROBE)
-    env["QLEANY_DEV"] = "1"
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=workdir,
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    checks = Report(PROBE)
+    app = session = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
+        workdir = os.path.dirname(manifest)
 
-        session.click(session.find("Open Qleany manifest", timeout=20))
-        session.call("settle", SETTLE)
-        session.click(session.find("Entities", timeout=10))
-        session.call("settle", SETTLE)
+        env = fixture.isolated_config(PROBE)
+        env["QLEANY_DEV"] = "1"
+
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()],
+            cwd=workdir,
+            env=env, label=f"qleany-{PROBE}",
+        )
+        if tree.wait_for_node(session, label="Home", timeout=30) is None:
+            raise RuntimeError("the app never rendered its navigation rail")
+        session.settle()
+
+        navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=20), settle=False)
+        session.settle(**SETTLE)
+        fixture.go_to(session, "Entities", settle=False)
+        session.settle(**SETTLE)
 
         # US-ENT-01: every entity, in manifest order.
         names = [n.get("label") for n in rows(session)]
@@ -195,11 +194,11 @@ def main():
             "US-ENT-01 an entity that inherits names its parent",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-entities.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-entities.png"))
 
         # US-ENT-02: add appends and selects.
-        session.click(session.find("Add entity", timeout=5))
-        session.call("settle", SETTLE)
+        navigate.click(session, tree.wait_for_node(session, label="Add entity", timeout=5), settle=False)
+        session.settle(**SETTLE)
         names = [n.get("label") for n in rows(session)]
         checks.check(
             names[-1] == "NewEntity",
@@ -232,24 +231,24 @@ def main():
 
         # US-ENT-04: the name is validated as it is typed.
         name = text_input(session, "Name", "NewEntity")
-        session.call("set_value", {"node": name["id"], "value": ""})
-        session.call("settle", SETTLE)
+        session.tools.set_value(node=name["id"], value="")
+        session.settle(**SETTLE)
         checks.check(
             "Entity name is required" in statuses(session),
             "US-ENT-04 an empty entity name says so",
         )
         name = text_input(session, "Name")
-        session.call("set_value", {"node": name["id"], "value": "not pascal"})
-        session.call("settle", SETTLE)
+        session.tools.set_value(node=name["id"], value="not pascal")
+        session.settle(**SETTLE)
         checks.check(
             "Entity name must be in PascalCase" in statuses(session),
             "US-ENT-04 a badly cased entity name says so, and differently",
         )
         name = text_input(session, "Name")
-        session.call("focus_node", {"node": name["id"]})
-        session.call("set_value", {"node": name["id"], "value": "ProbedEntity"})
-        session.call("inject_key", {"key": "Enter"})
-        session.call("settle", SETTLE)
+        session.tools.focus_node(node=name["id"])
+        session.tools.set_value(node=name["id"], value="ProbedEntity")
+        session.tools.inject_key(key="Enter")
+        session.settle(**SETTLE)
         checks.check(
             "ProbedEntity" in [n.get("label") for n in rows(session)],
             "US-ENT-04 the committed name reaches the list",
@@ -257,14 +256,14 @@ def main():
 
         # US-ENT-05: heritage-only takes three rows away in one step.
         heritage = next(
-            (n for n in session.nodes()
+            (n for n in tree.nodes(session)
              if n.get("role") == "CheckBox" and n.get("label") == "Only for heritage"),
             None,
         )
         checks.check(heritage is not None, "US-ENT-05 there is a heritage checkbox")
         if heritage is not None:
-            session.click(heritage)
-            session.call("settle", SETTLE)
+            navigate.click(session, heritage, settle=False)
+            session.settle(**SETTLE)
             after = form_labels(session)
             for gone in ("Inherits from", "Single model", "Undoable"):
                 checks.check(
@@ -277,20 +276,20 @@ def main():
             )
             # And back again, so the rest of the probe has a concrete entity.
             heritage = next(
-                (n for n in session.nodes()
+                (n for n in tree.nodes(session)
                  if n.get("role") == "CheckBox" and n.get("label") == "Only for heritage"),
                 None,
             )
-            session.click(heritage)
-            session.call("settle", SETTLE)
+            navigate.click(session, heritage, settle=False)
+            session.settle(**SETTLE)
             checks.check(
                 "Undoable" in form_labels(session),
                 "US-ENT-05 the rows come back when it is concrete again",
             )
 
         # US-FLD-01: a field, with the subtitle its type asks for.
-        session.click(session.find("Add field", timeout=5))
-        session.call("settle", SETTLE)
+        navigate.click(session, tree.wait_for_node(session, label="Add field", timeout=5), settle=False)
+        session.settle(**SETTLE)
         checks.check(
             "new_field" in [n.get("label") for n in rows(session, FIELD_COLUMN)],
             "US-FLD-01 the new field is appended",
@@ -355,7 +354,7 @@ def main():
                 "US-FLD-07 a to-many can be a list model",
             )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-entities-field.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-entities-field.png"))
 
         # US-FLD-09: leaving Entity clears what only an Entity field has.
         checks.check(
@@ -374,26 +373,25 @@ def main():
 
         # US-ENT-03: delete through the row menu.
         before = len(rows(session))
-        menus = [n for n in session.nodes()
+        menus = [n for n in tree.nodes(session)
                  if n.get("role") == "Button" and n.get("label") == "More actions"]
         checks.check(bool(menus), "US-ENT-03 every row carries an overflow button")
         if menus:
-            session.call("invoke_action",
-                         {"node": menus[0]["id"], "action": "show_context_menu"})
-            session.call("settle", SETTLE)
-            entry = session.find("Delete entity", timeout=3)
+            session.tools.invoke_action(node=menus[0]["id"], action="show_context_menu")
+            session.settle(**SETTLE)
+            entry = tree.wait_for_node(session, label="Delete entity", timeout=3)
             checks.check(entry is not None, "US-ENT-03 the row menu offers Delete")
             if entry is not None:
-                session.click(entry)
-                session.call("settle", SETTLE)
+                navigate.click(session, entry, settle=False)
+                session.settle(**SETTLE)
                 # US-SAFE-01: an entity takes its fields and relationships with it,
                 # so it asks first. The question is the safety probe's subject; here
                 # it is answered so the delete can be checked.
-                confirm = session.find("Yes", timeout=3)
+                confirm = tree.wait_for_node(session, label="Yes", timeout=3)
                 checks.check(confirm is not None, "US-SAFE-01 the delete asks first")
                 if confirm is not None:
-                    session.click(confirm)
-                    session.call("settle", SETTLE)
+                    navigate.click(session, confirm, settle=False)
+                    session.settle(**SETTLE)
                 after_count = len(rows(session))
                 checks.check(
                     after_count < before,
@@ -401,12 +399,12 @@ def main():
                 )
 
         # US-ENT-09: the Mermaid export.
-        export = session.find("Export to Mermaid", timeout=3)
+        export = tree.wait_for_node(session, label="Export to Mermaid", timeout=3)
         checks.check(export is not None, "US-ENT-09 there is an export button")
         if export is not None:
-            session.click(export)
-            session.call("settle", SETTLE)
-            _, spoken = session.call("pull_announcements", {"since_seq": 0})
+            navigate.click(session, export, settle=False)
+            session.settle(**SETTLE)
+            spoken = session.tools.pull_announcements(since_seq=0)
             entries = spoken if isinstance(spoken, list) else (spoken or {}).get(
                 "announcements", []
             )
@@ -421,11 +419,11 @@ def main():
 
         # The edits reach the file. Everything above could pass against a form that
         # never wrote anything.
-        save = session.find("Save manifest", timeout=5, role="Button")
+        save = tree.wait_for_node(session, label="Save manifest", timeout=5, role="Button")
         checks.check(save is not None, "there is something to save")
         if save is not None:
-            session.click(save)
-            session.call("settle", SETTLE)
+            navigate.click(session, save, settle=False)
+            session.settle(**SETTLE)
         with open(manifest, "r", encoding="utf-8") as fh:
             written = fh.read()
         checks.check(
@@ -436,16 +434,17 @@ def main():
             "name: new_field" in written,
             "US-FLD-01 the new field is in the file",
         )
+    except Exception as exc:
+        checks.error(f"{type(exc).__name__}: {exc}")
     finally:
         if session:
             session.close()
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
 
-    return checks.finish(PROBE, log)
+    return checks.finish()
 
 
 if __name__ == "__main__":

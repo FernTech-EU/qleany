@@ -14,11 +14,15 @@ use std::time::{Duration, Instant};
 use teksilo::data::ListModel;
 use teksilo::prelude::*;
 
+use crate::project::Language;
 use frontend::AppContext;
 use frontend::EntityId;
 use frontend::commands::{
-    file_generation_shared_steps_commands, long_operation_commands, rust_file_generation_commands,
+    cpp_qt_file_generation_commands, file_generation_shared_steps_commands, global_commands,
+    long_operation_commands, rust_file_generation_commands,
 };
+use frontend::common::long_operation::OperationStatus;
+use frontend::cpp_qt_file_generation::{FillCppQtFilesDto, GenerateCppQtFilesDto};
 use frontend::rust_file_generation::dtos::{FillRustFilesDto, GenerateRustFilesDto};
 
 use crate::app_ids::AppIds;
@@ -351,12 +355,25 @@ impl GenerateViewModel {
         } else {
             String::new()
         };
-        let dto = GenerateRustFilesDto {
-            file_ids,
-            root_path: ".".to_string(),
-            prefix,
-        };
-        match rust_file_generation_commands::generate_rust_files(&self.app_ctx, &dto) {
+        let result = self.target_language().and_then(|language| match language {
+            Language::Rust => rust_file_generation_commands::generate_rust_files(
+                &self.app_ctx,
+                &GenerateRustFilesDto {
+                    file_ids,
+                    root_path: ".".to_string(),
+                    prefix,
+                },
+            ),
+            Language::CppQt => cpp_qt_file_generation_commands::generate_cpp_qt_files(
+                &self.app_ctx,
+                &GenerateCppQtFilesDto {
+                    file_ids,
+                    root_path: ".".to_string(),
+                    prefix,
+                },
+            ),
+        });
+        match result {
             Ok(id) => self.begin(id, Stage::Generating, tr!(generate_step_writing())),
             Err(e) => self.fail(&e.to_string()),
         }
@@ -373,22 +390,53 @@ impl GenerateViewModel {
 
     // ── the pipeline ─────────────────────────────────────────────────────────
 
-    /// Enumerate the files, then start rendering them.
-    fn start_computing(&self) {
-        if let Err(e) = rust_file_generation_commands::fill_rust_files(
-            &self.app_ctx,
-            &FillRustFilesDto {
-                only_list_already_existing: false,
-            },
-        ) {
-            self.fail(&e.to_string());
-            return;
+    fn target_language(&self) -> anyhow::Result<Language> {
+        let id = self
+            .ids
+            .global_id
+            .get()
+            .ok_or_else(|| anyhow::anyhow!("No global selected"))?;
+        let global = global_commands::get_global(&self.app_ctx, &id)?
+            .ok_or_else(|| anyhow::anyhow!("Global not found"))?;
+        match global.language.as_str() {
+            "rust" => Ok(Language::Rust),
+            "cpp-qt" => Ok(Language::CppQt),
+            other => anyhow::bail!("Unsupported language: {other}"),
         }
-        // The list is usable already: every file is there, with its status still
-        // unknown, which is why an unknown status is never filtered out.
-        self.reproject();
+    }
 
-        match rust_file_generation_commands::fill_code_in_rust_files(&self.app_ctx) {
+    /// Enumerate the files, then start rendering them for the manifest's language.
+    fn start_computing(&self) {
+        let result = self.target_language().and_then(|language| {
+            match language {
+                Language::Rust => {
+                    rust_file_generation_commands::fill_rust_files(
+                        &self.app_ctx,
+                        &FillRustFilesDto {
+                            only_list_already_existing: false,
+                        },
+                    )?;
+                }
+                Language::CppQt => {
+                    cpp_qt_file_generation_commands::fill_cpp_qt_files(
+                        &self.app_ctx,
+                        &FillCppQtFilesDto {
+                            only_list_already_existing: false,
+                        },
+                    )?;
+                }
+            }
+            self.reproject();
+            match language {
+                Language::Rust => {
+                    rust_file_generation_commands::fill_code_in_rust_files(&self.app_ctx)
+                }
+                Language::CppQt => {
+                    cpp_qt_file_generation_commands::fill_code_in_cpp_qt_files(&self.app_ctx)
+                }
+            }
+        });
+        match result {
             Ok(id) => self.begin(id, Stage::Computing, tr!(generate_step_rendering())),
             Err(e) => self.fail(&e.to_string()),
         }
@@ -422,12 +470,22 @@ impl GenerateViewModel {
             }
         }
 
-        let finished = long_operation_commands::is_operation_finished(&self.app_ctx, &running.id)
-            // An operation the manager has forgotten is finished as far as this
-            // screen is concerned: waiting on it would hang the modal forever.
-            .unwrap_or(true);
-        if !finished {
-            return true;
+        match long_operation_commands::get_operation_status(&self.app_ctx, &running.id) {
+            Some(OperationStatus::Running) => return true,
+            Some(OperationStatus::Completed) => {}
+            Some(OperationStatus::Failed(error)) => {
+                self.fail(&error);
+                return false;
+            }
+            Some(OperationStatus::Cancelled) => {
+                self.cancel();
+                self.status.set(Some(tr!(generate_operation_cancelled())));
+                return false;
+            }
+            None => {
+                self.fail("The generation operation is no longer available");
+                return false;
+            }
         }
 
         self.running.borrow_mut().take();
@@ -574,6 +632,159 @@ mod tests {
             status: FileStatus::Modified,
             nature: FileNature::Infrastructure,
         }
+    }
+
+    fn wait_for_running(vm: &GenerateViewModel) -> String {
+        let id = vm
+            .running
+            .borrow()
+            .as_ref()
+            .expect("operation started")
+            .id
+            .clone();
+        let completion = vm
+            .app_ctx
+            .long_operation_manager
+            .lock()
+            .unwrap()
+            .completion_signal();
+        assert!(completion.wait_for(&id, Some(Duration::from_secs(30))));
+        id
+    }
+
+    #[test]
+    #[cfg(not(feature = "mocks"))]
+    fn both_languages_render_and_write_their_own_files() {
+        use crate::test_support::Fixture;
+        use frontend::handling_manifest::dtos::CreateLanguage;
+        for (language, extension) in [(CreateLanguage::Rust, "rs"), (CreateLanguage::CppQt, "h")] {
+            let f = Fixture::new(language);
+            let vm = GenerateViewModel::new(
+                f.ctx.clone(),
+                f.ids.clone(),
+                SystemFilesListModel::new(f.ctx.clone(), Signal::new(None)),
+            );
+            vm.enter();
+            let id = wait_for_running(&vm);
+            assert_eq!(
+                long_operation_commands::get_operation_status(&f.ctx, &id),
+                Some(OperationStatus::Completed)
+            );
+            assert!(!vm.poll());
+            let file = vm
+                .files
+                .rows()
+                .into_iter()
+                .find(|row| {
+                    row.name != "lib.rs"
+                        && row.name != "mod.rs"
+                        && std::path::Path::new(&row.name)
+                            .extension()
+                            .is_some_and(|e| e == extension)
+                })
+                .expect("a source file for this language");
+            assert!(!file.generated_code.as_deref().unwrap_or("").is_empty());
+            vm.tick(file.id).set(true);
+            vm.generate();
+            let id = wait_for_running(&vm);
+            assert_eq!(
+                long_operation_commands::get_operation_status(&f.ctx, &id),
+                Some(OperationStatus::Completed)
+            );
+            assert!(!vm.poll());
+            assert!(
+                f.dir
+                    .join("temp")
+                    .join(&file.relative_path)
+                    .join(&file.name)
+                    .is_file()
+            );
+        }
+    }
+
+    #[test]
+    fn failed_background_operations_report_the_error() {
+        struct Failure;
+        impl frontend::common::long_operation::LongOperation for Failure {
+            type Output = ();
+            fn execute(
+                &self,
+                _: Box<dyn Fn(frontend::common::long_operation::OperationProgress) + Send>,
+                _: std::sync::Arc<std::sync::atomic::AtomicBool>,
+            ) -> anyhow::Result<()> {
+                anyhow::bail!("disk is full")
+            }
+        }
+        for stage in [Stage::Computing, Stage::Generating] {
+            let vm = vm();
+            let id = vm
+                .app_ctx
+                .long_operation_manager
+                .lock()
+                .unwrap()
+                .start_operation(Failure);
+            vm.begin(id, stage, lit!("Working"));
+            wait_for_running(&vm);
+            assert!(!vm.poll());
+            assert_eq!(vm.stage().get(), Stage::Idle);
+            assert!(
+                vm.status()
+                    .get()
+                    .unwrap()
+                    .resolve_now()
+                    .contains("disk is full")
+            );
+            assert!(vm.running.borrow().is_none());
+        }
+    }
+
+    #[test]
+    fn cancelled_operation_does_not_report_success() {
+        struct UntilReleased(std::sync::mpsc::Receiver<()>);
+        impl frontend::common::long_operation::LongOperation for UntilReleased {
+            type Output = ();
+            fn execute(
+                &self,
+                _: Box<dyn Fn(frontend::common::long_operation::OperationProgress) + Send>,
+                _: std::sync::Arc<std::sync::atomic::AtomicBool>,
+            ) -> anyhow::Result<()> {
+                self.0.recv()?;
+                Ok(())
+            }
+        }
+        let vm = vm();
+        let (release, receiver) = std::sync::mpsc::channel();
+        let id = vm
+            .app_ctx
+            .long_operation_manager
+            .lock()
+            .unwrap()
+            .start_operation(UntilReleased(receiver));
+        vm.begin(id.clone(), Stage::Generating, lit!("Working"));
+        long_operation_commands::cancel_operation(&vm.app_ctx, &id);
+        release.send(()).unwrap();
+        wait_for_running(&vm);
+        assert!(!vm.poll());
+        assert_eq!(vm.stage().get(), Stage::Idle);
+        assert_eq!(
+            vm.status().get().unwrap().resolve_now(),
+            tr!(generate_operation_cancelled()).resolve_now()
+        );
+        assert!(vm.running.borrow().is_none());
+    }
+
+    #[test]
+    fn forgotten_operation_is_an_error_not_success() {
+        let vm = vm();
+        vm.begin("missing".to_string(), Stage::Generating, lit!("Working"));
+        assert!(!vm.poll());
+        assert!(
+            vm.status()
+                .get()
+                .unwrap()
+                .resolve_now()
+                .contains("no longer available")
+        );
     }
 
     /// US-GEN-09 and US-GEN-07: the two settings every launch starts from.

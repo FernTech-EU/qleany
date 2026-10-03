@@ -11,17 +11,17 @@ out whether they really do is to change it on one and look at the other.
 """
 
 import os
-import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = ("US-UIT-01",)
 PROBE = "user_interface"
 SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
-SETTLE = {"settle": {"settle_timeout_ms": 3000}}
+SETTLE = {"settle_timeout_ms": 3000}
 
 RUST_TARGETS = ["CLI", "Teksilo (recommended)", "Slint", "iOS (UniFFI)", "Android (UniFFI)"]
 CPP_TARGETS = ["Qt Widgets", "Qt Quick"]
@@ -30,7 +30,7 @@ CPP_TARGETS = ["Qt Widgets", "Qt Quick"]
 def checkboxes(session):
     return {
         n.get("label"): n
-        for n in session.nodes()
+        for n in tree.nodes(session)
         if n.get("role") == "CheckBox"
     }
 
@@ -57,32 +57,29 @@ def ui_block(path):
 
 
 def go_to(session, screen):
-    session.click(session.find(screen, timeout=10))
-    session.call("settle", SETTLE)
+    navigate.click(session, tree.wait_for_node(session, label=screen, timeout=10), settle=False)
+    session.settle(**SETTLE)
 
 
 def main():
-    checks = fixture.Checks()
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{os.getpid()}.log")
-
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
-    env = fixture.isolated_config(PROBE)
-    env["QLEANY_DEV"] = "1"
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=os.path.dirname(manifest),
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    checks = Report(PROBE)
+    app = session = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
+        env = fixture.isolated_config(PROBE)
+        env["QLEANY_DEV"] = "1"
 
-        session.click(session.find("Open Qleany manifest", timeout=20))
-        session.call("settle", SETTLE)
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()],
+            cwd=os.path.dirname(manifest),
+            env=env, label=f"qleany-{PROBE}",
+        )
+        if tree.wait_for_node(session, label="Home", timeout=30) is None:
+            raise RuntimeError("the app never rendered its navigation rail")
+        session.settle()
+
+        navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=20), settle=False)
+        session.settle(**SETTLE)
         go_to(session, "User Interface")
 
         boxes = checkboxes(session)
@@ -106,13 +103,13 @@ def main():
                 f"US-UIT-01 {target!r} reads {expected} from the manifest",
             )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-user-interface.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-user-interface.png"))
 
         # A flag can be turned off, and it stays off across a visit to another
         # screen: this is the whole write path, through a single that has to be
         # re-pointed when the screen is rebuilt.
-        session.click(boxes["Slint"])
-        session.call("settle", SETTLE)
+        navigate.click(session, boxes["Slint"], settle=False)
+        session.settle(**SETTLE)
         go_to(session, "Home")
         go_to(session, "User Interface")
         checks.check(
@@ -123,13 +120,13 @@ def main():
         # Changing the language swaps the section clean.
         go_to(session, "Project")
         language = next(
-            n for n in session.nodes()
+            n for n in tree.nodes(session)
             if n.get("role") == "ComboBox" and n.get("label") == "Language"
         )
-        session.call("focus_node", {"node": language["id"]})
-        session.call("inject_key", {"key": "ArrowDown"})
-        session.call("inject_key", {"key": "Enter"})
-        session.call("settle", SETTLE)
+        session.tools.focus_node(node=language["id"])
+        session.tools.inject_key(key="ArrowDown")
+        session.tools.inject_key(key="Enter")
+        session.settle(**SETTLE)
         go_to(session, "User Interface")
 
         boxes = checkboxes(session)
@@ -143,21 +140,21 @@ def main():
         )
         checks.check(
             "C++ / Qt user interfaces" in
-            [n.get("value") for n in session.nodes() if n.get("role") == "Label"],
+            [n.get("value") for n in tree.nodes(session) if n.get("role") == "Label"],
             "US-UIT-01 the section is renamed with its targets",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-user-interface-cpp.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-user-interface-cpp.png"))
 
         # Turn a Qt target on, save, and read the file: the form could show all of
         # this and write none of it.
-        session.click(boxes["Qt Quick"])
-        session.call("settle", SETTLE)
-        save = session.find("Save manifest", timeout=5, role="Button")
+        navigate.click(session, boxes["Qt Quick"], settle=False)
+        session.settle(**SETTLE)
+        save = tree.wait_for_node(session, label="Save manifest", timeout=5, role="Button")
         checks.check(save is not None, "there is something to save")
         if save is not None:
-            session.click(save)
-            session.call("settle", SETTLE)
+            navigate.click(session, save, settle=False)
+            session.settle(**SETTLE)
 
         block = ui_block(manifest)
         checks.check(
@@ -171,16 +168,17 @@ def main():
             "rust_slint" not in block,
             f"US-UIT-01 and one turned off reaches it too, block is {block!r}",
         )
+    except Exception as exc:
+        checks.error(f"{type(exc).__name__}: {exc}")
     finally:
         if session:
             session.close()
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
 
-    return checks.finish(PROBE, log)
+    return checks.finish()
 
 
 if __name__ == "__main__":

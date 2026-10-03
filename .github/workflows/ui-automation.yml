@@ -10,6 +10,10 @@ on:
     paths:
       - "crates/teksilo_ui/**"
       - "scripts/automation_*.py"
+      - "scripts/teksilo_probe/**"
+      - "scripts/tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
       # This file and the action it calls, following docs.yml's convention: a
       # mistake in either would otherwise wait for the nightly run, on main,
       # after it had already merged.
@@ -41,6 +45,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Test the probe integration
+        run: python3 -m unittest discover -s scripts/tests -v
 
       - name: Install system dependencies (Linux)
         uses: ./.github/actions/install-linux-deps
@@ -78,21 +85,21 @@ jobs:
           # instead of timing out identically.
           cache-on-failure: true
 
-      # `fixture.mcp_binary()` looks this up on PATH. The crate ships from the same
-      # teksilo release that has to publish the framework itself, so until that
-      # release lands this step cannot resolve and neither can this job.
+      # Match the protocol to the framework resolved by this checkout.
       - name: Install the automation MCP server
-        run: cargo install teksilo-automation-mcp --locked
+        run: |
+          version=$(python3 -c 'import tomllib; print(next(p["version"] for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "teksilo"))')
+          cargo install teksilo-automation-mcp --version "=$version" --locked
 
       # No build step: `fixture.app_binary()` runs `cargo build -p qleany
       # --bin qleany` every time, on purpose, so a probe always drives the
       # real-backend debug binary whatever was compiled last.
       #
       # Every probe runs even after one fails. Stopping at the first would hide the
-      # other eleven, and the usual case is that a shared assumption broke and half
+      # other probes, and the usual case is that a shared assumption broke and half
       # of them have something to say about it. Each probe prints a final
-      # `PASS: <name>` or `FAIL: <name>` and exits 0 or 1, so the exit status is the
-      # verdict.
+      # harness report: 0 means passed, 1 means unable to run, and 2 means
+      # an observed behaviour was absent. Both nonzero outcomes fail this job.
       - name: Run the MCP probes
         env:
           QLEANY_SHOT_DIR: ${{ runner.temp }}/shots

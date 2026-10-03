@@ -12,21 +12,21 @@ view-model's unit tests instead.
 """
 
 import os
-import subprocess
 import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = ("US-WIZ-01", "US-WIZ-02", "US-WIZ-03", "US-WIZ-04", "US-WIZ-05")
 PROBE = "wizard"
 SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
-SETTLE = {"settle": {"settle_timeout_ms": 3000}}
+SETTLE = {"settle_timeout_ms": 3000}
 
 
 def roles(session, role):
-    return [n for n in session.nodes() if n.get("role") == role]
+    return [n for n in tree.nodes(session) if n.get("role") == role]
 
 
 def labels(session, role):
@@ -45,29 +45,26 @@ def wizard_is_open(session):
 
 
 def open_wizard(session):
-    session.click(button(session, "New manifest"))
-    session.call("settle", SETTLE)
+    navigate.click(session, button(session, "New manifest"), settle=False)
+    session.settle(**SETTLE)
 
 
 def main():
-    checks = fixture.Checks()
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{os.getpid()}.log")
-
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
-    env = fixture.isolated_config(PROBE)
-    env["QLEANY_DEV"] = "1"
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=os.path.dirname(manifest),
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    checks = Report(PROBE)
+    app = session = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
+        env = fixture.isolated_config(PROBE)
+        env["QLEANY_DEV"] = "1"
+
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()],
+            cwd=os.path.dirname(manifest),
+            env=env, label=f"qleany-{PROBE}",
+        )
+        if tree.wait_for_node(session, label="Home", timeout=30) is None:
+            raise RuntimeError("the app never rendered its navigation rail")
+        session.settle()
 
         open_wizard(session)
 
@@ -91,11 +88,11 @@ def main():
             f"US-WIZ-02 step 1 offers both languages, got {radios}",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-wizard.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-wizard.png"))
 
         # US-WIZ-03: the names gate Next.
-        session.click(button(session, "Next"))
-        session.call("settle", SETTLE)
+        navigate.click(session, button(session, "Next"), settle=False)
+        session.settle(**SETTLE)
         checks.check(
             button(session, "Back") is not None,
             "US-WIZ-01 Back appears from step 2",
@@ -112,8 +109,8 @@ def main():
         )
         checks.check(app_name is not None, "US-WIZ-03 step 2 asks for an application name")
         if app_name is not None:
-            session.call("set_value", {"node": app_name["id"], "value": "my app"})
-            session.call("settle", SETTLE)
+            session.tools.set_value(node=app_name["id"], value="my app")
+            session.settle(**SETTLE)
             statuses = [n.get("label") for n in roles(session, "Status")]
             checks.check(
                 "Must be PascalCase" in statuses,
@@ -122,8 +119,8 @@ def main():
             app_name = next(
                 n for n in roles(session, "TextInput") if n.get("label") == "Application name"
             )
-            session.call("set_value", {"node": app_name["id"], "value": "ProbedApp"})
-            session.call("settle", SETTLE)
+            session.tools.set_value(node=app_name["id"], value="ProbedApp")
+            session.settle(**SETTLE)
 
         next_button = button(session, "Next")
         checks.check(
@@ -133,8 +130,8 @@ def main():
         org = next(
             n for n in roles(session, "TextInput") if n.get("label") == "Organisation name"
         )
-        session.call("set_value", {"node": org["id"], "value": "FernTech"})
-        session.call("settle", SETTLE)
+        session.tools.set_value(node=org["id"], value="FernTech")
+        session.settle(**SETTLE)
         next_button = button(session, "Next")
         checks.check(
             next_button is not None and not next_button.get("disabled", False),
@@ -142,8 +139,8 @@ def main():
         )
 
         # US-WIZ-04: the four templates.
-        session.click(button(session, "Next"))
-        session.call("settle", SETTLE)
+        navigate.click(session, button(session, "Next"), settle=False)
+        session.settle(**SETTLE)
         templates = labels(session, "RadioButton")
         checks.check(
             templates == ["Blank", "Minimal", "Document editor", "Data management"],
@@ -151,8 +148,8 @@ def main():
         )
 
         # US-WIZ-05: the frontends of the chosen language, and Create instead of Next.
-        session.click(button(session, "Next"))
-        session.call("settle", SETTLE)
+        navigate.click(session, button(session, "Next"), settle=False)
+        session.settle(**SETTLE)
         ticks = labels(session, "CheckBox")
         checks.check(
             ticks == ["CLI", "Teksilo (recommended)", "Slint"],
@@ -175,11 +172,11 @@ def main():
             "US-WIZ-01 and Next is gone",
         )
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-wizard-targets.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-wizard-targets.png"))
 
         # US-WIZ-01: Cancel dismisses, and nothing was created.
-        session.click(button(session, "Cancel"))
-        session.call("settle", SETTLE)
+        navigate.click(session, button(session, "Cancel"), settle=False)
+        session.settle(**SETTLE)
         checks.check(not wizard_is_open(session), "US-WIZ-01 Cancel dismisses the wizard")
         checks.check(
             button(session, "Save manifest").get("disabled", False),
@@ -189,8 +186,8 @@ def main():
         # US-WIZ-01: Escape dismisses too.
         open_wizard(session)
         checks.check(wizard_is_open(session), "the wizard reopens")
-        session.call("inject_key", {"key": "Escape"})
-        session.call("settle", SETTLE)
+        session.tools.inject_key(key="Escape")
+        session.settle(**SETTLE)
         checks.check(not wizard_is_open(session), "US-WIZ-01 Escape dismisses the wizard")
 
         # US-WIZ-02: the language drives step 4.
@@ -200,26 +197,27 @@ def main():
         )
         checks.check(cpp is not None, "US-WIZ-02 the other language can be chosen")
         if cpp is not None:
-            session.click(cpp)
-            session.call("settle", SETTLE)
+            navigate.click(session, cpp, settle=False)
+            session.settle(**SETTLE)
         for _ in range(3):
-            session.click(button(session, "Next"))
-            session.call("settle", SETTLE)
+            navigate.click(session, button(session, "Next"), settle=False)
+            session.settle(**SETTLE)
         ticks = labels(session, "CheckBox")
         checks.check(
             ticks == ["Qt Quick", "Qt Widgets"],
             f"US-WIZ-05 a C++/Qt manifest offers the Qt frontends, got {ticks}",
         )
+    except Exception as exc:
+        checks.error(f"{type(exc).__name__}: {exc}")
     finally:
         if session:
             session.close()
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
 
-    return checks.finish(PROBE, log)
+    return checks.finish()
 
 
 if __name__ == "__main__":

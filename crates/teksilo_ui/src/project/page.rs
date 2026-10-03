@@ -40,8 +40,6 @@ impl ProjectPage {
 
 impl Widget for ProjectPage {
     fn build(&mut self, ctx: &mut BuildContext) -> Vec<WidgetId> {
-        self.vm.wire(ctx);
-
         // Bound on the view-model's own signal, not on a `.map(..)` of it: a derived
         // signal built inline is dropped at the end of the statement, and the
         // binding would then be registered against something that no longer exists.

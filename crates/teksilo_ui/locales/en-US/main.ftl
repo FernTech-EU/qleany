@@ -293,6 +293,7 @@ generate-view-diff = View diff
 generate-run = Generate ({ $count })
 generate-refresh = Recompute
 generate-cancel = Cancel
+generate-operation-cancelled = Generation cancelled.
 generate-empty = No files match
 generate-empty-hint = Widen the filters, or pick another group.
 generate-no-selection = No file selected

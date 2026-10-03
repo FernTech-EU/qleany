@@ -47,6 +47,9 @@ pub mod shell;
 pub mod style;
 pub mod user_interface;
 
+#[cfg(test)]
+mod test_support;
+
 use std::rc::Rc;
 
 use teksilo::core::window::CloseResponse;

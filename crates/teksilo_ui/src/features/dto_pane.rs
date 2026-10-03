@@ -16,6 +16,7 @@ use crate::features::dto_vm::{DTO_FIELD_TYPES, dto_field_subtitle, dto_field_typ
 use crate::shared::form::{field_label, required_field_label};
 use crate::shared::list_or_empty::{emptiness, empty_state, list_or_empty};
 use crate::shared::reorder::ReorderableSource;
+use crate::shared::row_menu::row_menu_button;
 
 /// Height of the field list inside a pane. Two panes sit side by side under a form,
 /// so neither can take the whole column.
@@ -115,20 +116,15 @@ fn fields_pane(vm: &DtoViewModel) -> impl Widget {
                 .selected(selected)
                 .label_overflow(TextOverflow::Ellipsis(EllipsisMode::Trailing))
                 .subtitle_overflow(TextOverflow::Ellipsis(EllipsisMode::Trailing))
-                .trailing_slot(
-                    IconButton::new(crate::icons::action::more())
-                        .size(IconButtonSize::Toolbar)
-                        .tooltip(tr!(common_more_actions()))
-                        .context_menu(move |_pos, _ctx| {
-                            let vm = vm.clone();
-                            Some(Box::new(
-                                MenuList::new().item(
-                                    MenuItem::new(tr!(dto_field_delete()))
-                                        .on_activate_fn(move |_c| vm.remove_field(id)),
-                                ),
-                            ) as Box<dyn Widget>)
-                        }),
-                ),
+                .trailing_slot(row_menu_button(move || {
+                    let vm = vm.clone();
+                    Box::new(
+                        MenuList::new().item(
+                            MenuItem::new(tr!(dto_field_delete()))
+                                .on_activate_fn(move |_c| vm.remove_field(id)),
+                        ),
+                    )
+                })),
         )
     })
     .reorderable(true)
@@ -283,6 +279,5 @@ fn confirm_disable(vm: &DtoViewModel, ctx: &mut EventContext) {
 }
 
 fn commit_enum_name(vm: &DtoViewModel) {
-    let value = vm.field_enum_name().get();
-    vm.set_field_enum_name(&value);
+    vm.commit_field();
 }

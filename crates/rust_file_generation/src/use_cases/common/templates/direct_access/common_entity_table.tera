@@ -61,6 +61,40 @@ impl<'a> {{ s.entities[e].pascal_name }}HashMapTable<'a> {
         }
     }
 
+    fn relationship_source_exists(&self, id: &EntityId) -> bool {
+        read_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }}).contains_key(id)
+    }
+
+    fn relationship_is_ordered(&self, field: &{{ s.entities[e].pascal_name }}RelationshipField) -> bool {
+        match field {
+            {% for rid, r in s.entities[e].forward_relationships %}
+            {{ s.entities[e].pascal_name }}RelationshipField::{{ r.field_pascal_name }} => {{ r.inner.relationship_type == "OrderedOneToMany" }},
+            {%- endfor %}
+        }
+    }
+
+    fn validate_relationship_updates(
+        &self,
+        field: &{{ s.entities[e].pascal_name }}RelationshipField,
+        rows: &[(EntityId, Vec<EntityId>)],
+        _creating_ids: &[EntityId],
+    ) -> Result<(), RepositoryError> {
+        let (exclusive, scalar) = match field {
+            {% for rid, r in s.entities[e].forward_relationships %}
+            {{ s.entities[e].pascal_name }}RelationshipField::{{ r.field_pascal_name }} => {
+                let targets = read_or_recover(&self.store.{{ s.entities[r.inner.right_entity].snake_name | pluralize }});
+                let missing: Vec<_> = rows.iter().flat_map(|(_, ids)| ids).copied()
+                    .filter(|id| !targets.contains_key(id){% if r.inner.right_entity == e %} && !_creating_ids.contains(id){% endif %}).collect();
+                if !missing.is_empty() {
+                    return Err(RepositoryError::MissingRelationshipTarget { operation: "relationship update", ids: missing });
+                }
+                ({{ r.inner.relationship_type == "OneToOne" or r.inner.relationship_type == "OneToMany" or r.inner.relationship_type == "OrderedOneToMany" }}, {{ r.inner.relationship_type == "OneToOne" or r.inner.relationship_type == "ManyToOne" }})
+            }
+            {%- endfor %}
+        };
+        crate::database::hashmap_store::validate_junction_updates(self.resolve_junction(field), rows, exclusive, scalar)
+    }
+
     fn hydrate(&self, entity: &mut {{ s.entities[e].pascal_name }}) {
         {% for f in s.entities[e].fields %}
         {%- if f.inner.field_type == "Entity" %}
@@ -104,10 +138,28 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn create_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
+        // Assign identities first, then validate the whole batch without holding
+        // the source table lock (self-referential relationships read that table).
+        let entities: Vec<_> = entities.iter().map(|entity| {
+            let mut entity = entity.clone();
+            if entity.id == EntityId::default() {
+                entity.id = self.store.next_id("{{ s.entities[e].snake_name }}");
+            }
+            entity
+        }).collect();
+        {% for f in s.entities[e].fields %}
+        {%- if f.inner.field_type == "Entity" and f.is_list %}
+        self.validate_relationship_updates(
+            &{{ s.entities[e].pascal_name }}RelationshipField::{{ f.pascal_name }},
+            &entities.iter().map(|e| (e.id, e.{{ f.snake_name }}.clone())).collect::<Vec<_>>(),
+            &entities.iter().map(|e| e.id).collect::<Vec<_>>(),
+        )?;
+        {%- endif %}
+        {%- endfor %}
         let mut created = Vec::with_capacity(entities.len());
         let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
 
-        for entity in entities {
+        for entity in &entities {
             let new_entity = if entity.id == EntityId::default() {
                 let id = self.store.next_id("{{ s.entities[e].snake_name }}");
                 {{ s.entities[e].pascal_name }} { id, ..entity.clone() }
@@ -240,6 +292,15 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
     }
 
     fn update_with_relationships_multi(&mut self, entities: &[{{ s.entities[e].pascal_name }}]) -> Result<Vec<{{ s.entities[e].pascal_name }}>, RepositoryError> {
+        {% for f in s.entities[e].fields %}
+        {%- if f.inner.field_type == "Entity" and f.is_list %}
+        self.validate_relationship_updates(
+            &{{ s.entities[e].pascal_name }}RelationshipField::{{ f.pascal_name }},
+            &entities.iter().map(|e| (e.id, e.{{ f.snake_name }}.clone())).collect::<Vec<_>>(),
+            &[],
+        )?;
+        {%- endif %}
+        {%- endfor %}
         let mut {{ s.entities[e].snake_name }}_map = write_or_recover(&self.store.{{ s.entities[e].snake_name | pluralize }});
         for entity in entities {
             {% for f in s.entities[e].fields %}

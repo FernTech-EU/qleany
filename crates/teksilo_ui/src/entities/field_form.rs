@@ -235,13 +235,9 @@ fn enum_values_editor(vm: &FieldViewModel) -> impl Widget {
 }
 
 fn commit_enum_name(vm: &FieldViewModel) {
-    let value = vm.enum_name().get();
-    vm.set_enum_name(&value);
     vm.commit();
 }
 
 fn commit_displayed_field(vm: &FieldViewModel) {
-    let value = vm.displayed_field().get();
-    vm.set_displayed_field(&value);
     vm.commit();
 }

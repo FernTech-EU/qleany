@@ -13,13 +13,13 @@ so there is nothing here to make faster without testing something else.
 """
 
 import os
-import subprocess
 import sys
 import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = (
     "US-GEN-01", "US-GEN-02", "US-GEN-03", "US-GEN-04",
@@ -27,7 +27,7 @@ STORIES = (
 )
 PROBE = "generate"
 SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
-SETTLE = {"settle": {"settle_timeout_ms": 5000}}
+SETTLE = {"settle_timeout_ms": 5000}
 
 #: How long the rendering pass may take before the probe gives up on it.
 PIPELINE_TIMEOUT = 600
@@ -35,7 +35,7 @@ PIPELINE_TIMEOUT = 600
 
 def texts(session):
     out = []
-    for n in session.nodes():
+    for n in tree.nodes(session):
         for key in ("label", "value", "description"):
             if n.get(key):
                 out.append(n[key])
@@ -45,7 +45,7 @@ def texts(session):
 def buttons(session):
     return {
         n.get("label"): n
-        for n in session.nodes()
+        for n in tree.nodes(session)
         if n.get("role") == "Button" and n.get("label")
     }
 
@@ -59,7 +59,7 @@ def generate_button(session):
 
 def rows_in(session, low, high):
     listed = [
-        n for n in session.nodes()
+        n for n in tree.nodes(session)
         if n.get("role") == "ListBoxOption"
         and low <= n.get("bounds", {}).get("x", -1) < high
     ]
@@ -77,7 +77,7 @@ def files(session):
 
 
 def checkbox(session, label):
-    for n in session.nodes():
+    for n in tree.nodes(session):
         if n.get("role") == "CheckBox" and n.get("label") == label:
             return n
     return None
@@ -88,13 +88,15 @@ def wait_for_pipeline(session, checks):
     saw_progress = False
     deadline = time.time() + PIPELINE_TIMEOUT
     while time.time() < deadline:
-        session.call("settle", SETTLE)
+        # Progress animates continuously; settle cannot become idle here.
         shown = texts(session)
         if any("Computing file status" in t for t in shown):
             saw_progress = True
+            time.sleep(0.1)
             continue
-        if "Cancel" in [n.get("label") for n in session.nodes() if n.get("role") == "Button"]:
+        if "Cancel" in [n.get("label") for n in tree.nodes(session) if n.get("role") == "Button"]:
             saw_progress = True
+            time.sleep(0.1)
             continue
         break
     checks.check(
@@ -105,29 +107,26 @@ def wait_for_pipeline(session, checks):
 
 
 def main():
-    checks = fixture.Checks()
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{os.getpid()}.log")
-
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
-    workdir = os.path.dirname(manifest)
-    env = fixture.isolated_config(PROBE)
-    env["QLEANY_DEV"] = "1"
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=workdir,
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    checks = Report(PROBE)
+    app = session = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
+        workdir = os.path.dirname(manifest)
+        env = fixture.isolated_config(PROBE)
+        env["QLEANY_DEV"] = "1"
 
-        session.click(session.find("Open Qleany manifest", timeout=20))
-        session.call("settle", SETTLE)
-        session.click(session.find("Generate", timeout=10))
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()],
+            cwd=workdir,
+            env=env, label=f"qleany-{PROBE}",
+        )
+        if tree.wait_for_node(session, label="Home", timeout=30) is None:
+            raise RuntimeError("the app never rendered its navigation rail")
+        session.settle()
+
+        navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=20), settle=False)
+        session.settle(**SETTLE)
+        fixture.go_to(session, "Generate", settle=False)
         checks.check(
             wait_for_pipeline(session, checks),
             "US-GEN-01 the pipeline finishes",
@@ -170,7 +169,7 @@ def main():
         )
         checks.check(len(group_names) > 2, "US-GEN-02 there is more than one group")
 
-        session.shot(os.path.join(SHOT_DIR, "qleany-generate.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-generate.png"))
 
         # US-GEN-03: a row's accessible name is its whole path, however it is drawn.
         listed = files(session)
@@ -183,23 +182,23 @@ def main():
         # US-GEN-02: picking a group narrows the list.
         before = len(files(session))
         target = group_names[1]
-        session.click(next(n for n in rows_in(session, 0, 353) if n.get("label") == target))
-        session.call("settle", SETTLE)
+        navigate.click(session, next(n for n in rows_in(session, 0, 353) if n.get("label") == target), settle=False)
+        session.settle(**SETTLE)
         narrowed = len(files(session))
         checks.check(
             narrowed <= before,
             f"US-GEN-02 a group narrows the list, {before} to {narrowed}",
         )
-        session.click(next(n for n in rows_in(session, 0, 353) if n.get("label") == "All"))
-        session.call("settle", SETTLE)
+        navigate.click(session, next(n for n in rows_in(session, 0, 353) if n.get("label") == "All"), settle=False)
+        session.settle(**SETTLE)
 
         # US-GEN-04: the text filter.
         search = next(
-            n for n in session.nodes()
+            n for n in tree.nodes(session)
             if n.get("role") == "TextInput" and (n.get("bounds", {}).get("x") or 0) > 353
         )
-        session.call("set_value", {"node": search["id"], "value": "zzzz-no-such-file"})
-        session.call("settle", SETTLE)
+        session.tools.set_value(node=search["id"], value="zzzz-no-such-file")
+        session.settle(**SETTLE)
         checks.check(
             not files(session),
             "US-GEN-04 a filter that matches nothing shows nothing",
@@ -209,11 +208,11 @@ def main():
             "US-GEN-04 and says so rather than showing an empty pane",
         )
         search = next(
-            n for n in session.nodes()
+            n for n in tree.nodes(session)
             if n.get("role") == "TextInput" and (n.get("bounds", {}).get("x") or 0) > 353
         )
-        session.call("set_value", {"node": search["id"], "value": "Cargo"})
-        session.call("settle", SETTLE)
+        session.tools.set_value(node=search["id"], value="Cargo")
+        session.settle(**SETTLE)
         matched = files(session)
         checks.check(
             matched and all("Cargo" in (n.get("label") or "") for n in matched),
@@ -228,8 +227,8 @@ def main():
             "US-GEN-06 the button is disabled with nothing to write",
         )
 
-        session.click(buttons(session)["Select all"])
-        session.call("settle", SETTLE)
+        navigate.click(session, buttons(session)["Select all"], settle=False)
+        session.settle(**SETTLE)
         node, count = generate_button(session)
         checks.check(
             count == len(matched),
@@ -243,25 +242,25 @@ def main():
         # US-GEN-07: the preview, both ways. The list is re-read first: ticking
         # every row rebuilt it, and a node id is only valid for the instance it
         # named.
-        session.click(files(session)[0])
-        session.call("settle", SETTLE)
+        navigate.click(session, files(session)[0], settle=False)
+        session.settle(**SETTLE)
         shown = texts(session)
         checks.check(
             "No file selected" not in shown,
             "US-GEN-07 picking a file shows a preview",
         )
-        session.click(checkbox(session, "View diff"))
-        session.call("settle", SETTLE)
+        navigate.click(session, checkbox(session, "View diff"), settle=False)
+        session.settle(**SETTLE)
         checks.check(
             checkbox(session, "View diff").get("toggled") == "false",
             "US-GEN-07 the preview can be switched to the source",
         )
 
         # US-GEN-10: generate, for real, into temp.
-        session.click(generate_button(session)[0])
+        navigate.click(session, generate_button(session)[0], settle=False)
         deadline = time.time() + PIPELINE_TIMEOUT
         while time.time() < deadline:
-            session.call("settle", SETTLE)
+            time.sleep(0.1)
             if not any(
                 "Generating files" in t for t in texts(session)
             ):
@@ -282,17 +281,18 @@ def main():
             not os.path.isdir(os.path.join(workdir, "crates")),
             "US-GEN-09 and not into the project root",
         )
-        session.shot(os.path.join(SHOT_DIR, "qleany-generate-done.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-generate-done.png"))
+    except Exception as exc:
+        checks.error(f"{type(exc).__name__}: {exc}")
     finally:
         if session:
             session.close()
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
 
-    return checks.finish(PROBE, log)
+    return checks.finish()
 
 
 if __name__ == "__main__":

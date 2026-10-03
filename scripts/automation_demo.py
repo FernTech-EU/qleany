@@ -13,13 +13,13 @@ most convincing: nothing here is a stub.
 
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = (
     "US-DEMO-01",
@@ -31,7 +31,7 @@ STORIES = (
 )
 PROBE = "demo"
 SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
-SETTLE = {"settle": {"settle_timeout_ms": 3000}}
+SETTLE = {"settle_timeout_ms": 3000}
 
 # Rendering every file of a Data management manifest is minutes of work on a cold
 # debug build, and this probe waits for all of it.
@@ -88,77 +88,75 @@ def unsaved(session):
     Read from the title bar's save button, whose tooltip is one of two sentences,
     rather than from the Home screen's button, which only exists on Home.
     """
-    return "No unsaved changes" not in [n.get("label") for n in session.nodes()]
+    return "No unsaved changes" not in [n.get("label") for n in tree.nodes(session)]
 
 
 def open_demo(session):
-    session.click(button(session.nodes(), "Run demo"))
-    session.call("settle", SETTLE)
+    navigate.click(session, button(tree.nodes(session), "Run demo"), settle=False)
+    session.settle(**SETTLE)
 
 
 def set_destination(session, path):
     field = next(
         n for n in roles(dialog(session), "TextInput") if n.get("label") == "Destination"
     )
-    session.call("set_value", {"node": field["id"], "value": path})
-    session.call("settle", SETTLE)
+    session.tools.set_value(node=field["id"], value=path)
+    session.settle(**SETTLE)
 
 
 def main():
-    checks = fixture.Checks()
-    log = os.path.join(fixture.SCRATCH, f"qleany-{PROBE}-{os.getpid()}.log")
-
-    manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
-    env = fixture.isolated_config(PROBE)
-    env["QLEANY_DEV"] = "1"
-
-    sandbox = tempfile.mkdtemp(prefix="qleany-demo-probe-")
-    occupied = os.path.join(sandbox, "occupied")
-    os.makedirs(occupied)
-    with open(os.path.join(occupied, "qleany.yaml"), "w") as fh:
-        fh.write("# not a real manifest\n")
-    target = os.path.join(sandbox, "fresh")
-
-    app = subprocess.Popen(
-        [fixture.app_binary()],
-        cwd=os.path.dirname(manifest),
-        stdout=open(log, "w"),
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    session = None
+    checks = Report(PROBE)
+    app = session = None
+    sandbox = None
     try:
-        bridge = fixture.wait_for_bridge(log, app, timeout=60)
-        session = fixture.Session(bridge)
+        manifest = fixture.working_copy(fixture.repo_path("qleany.yaml"), PROBE)
+        env = fixture.isolated_config(PROBE)
+        env["QLEANY_DEV"] = "1"
+
+        sandbox = tempfile.mkdtemp(prefix="qleany-demo-probe-")
+        occupied = os.path.join(sandbox, "occupied")
+        os.makedirs(occupied)
+        with open(os.path.join(occupied, "qleany.yaml"), "w") as fh:
+            fh.write("# not a real manifest\n")
+        target = os.path.join(sandbox, "fresh")
+
+        app, session = launch_and_attach(
+            argv=[fixture.app_binary()],
+            cwd=os.path.dirname(manifest),
+            env=env, label=f"qleany-{PROBE}",
+        )
+        if tree.wait_for_node(session, label="Home", timeout=30) is None:
+            raise RuntimeError("the app never rendered its navigation rail")
+        session.settle()
 
         # The demo loads a manifest of its own, so it goes through the same guard
         # quitting does. The Slint UI discarded unsaved work without asking.
-        session.click(session.find("Open Qleany manifest", timeout=10))
-        session.call("settle", SETTLE)
-        session.click(session.find("Project", timeout=10))
-        session.call("settle", SETTLE)
-        name = session.find("Application name", timeout=10, role="TextInput")
-        session.call("set_value", {"node": name["id"], "value": "DirtiedByProbe"})
+        navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=10), settle=False)
+        session.settle(**SETTLE)
+        fixture.go_to(session, "Project", settle=False)
+        session.settle(**SETTLE)
+        name = tree.wait_for_node(session, label="Application name", timeout=10, role="TextInput")
+        session.tools.set_value(node=name["id"], value="DirtiedByProbe")
         # The form commits on Enter or on blur, not per keystroke, so nothing has
         # reached the store until one of those happens.
-        session.call("focus_node", {"node": name["id"]})
-        session.call("inject_key", {"key": "Enter"})
-        session.call("settle", SETTLE)
+        session.tools.focus_node(node=name["id"])
+        session.tools.inject_key(key="Enter")
+        session.settle(**SETTLE)
         checks.check(unsaved(session), "the manifest is unsaved before the demo is asked for")
-        session.click(session.find("Home", timeout=10))
-        session.call("settle", SETTLE)
-        session.click(button(session.nodes(), "Run demo"))
-        session.call("settle", SETTLE)
-        asked = texts(session.nodes())
+        fixture.go_to(session, "Home", settle=False)
+        session.settle(**SETTLE)
+        navigate.click(session, button(tree.nodes(session), "Run demo"), settle=False)
+        session.settle(**SETTLE)
+        asked = texts(tree.nodes(session))
         checks.check(
             any("Save before running the demo?" in t for t in asked),
             f"US-DEMO-01 running the demo over unsaved work asks first",
         )
-        cancel = session.find("Cancel", timeout=3)
+        cancel = tree.wait_for_node(session, label="Cancel", timeout=3)
         checks.check(cancel is not None, "and the question can be declined")
         if cancel is not None:
-            session.click(cancel)
-            session.call("settle", SETTLE)
+            navigate.click(session, cancel, settle=False)
+            session.settle(**SETTLE)
         checks.check(
             not dialog_is_open(session),
             "US-DEMO-01 declining does not open the demo",
@@ -167,13 +165,13 @@ def main():
         # Close asks too, since US-SAFE-03. Answer it, or the manifest stays open
         # and dirty and the next Run demo click gets the guard rather than the
         # demo, which reads as "the dialog opened" and fails everything after it.
-        session.click(button(session.nodes(), "Close current manifest"))
-        session.call("settle", SETTLE)
-        discard = session.find("Discard", timeout=3)
+        navigate.click(session, button(tree.nodes(session), "Close current manifest"), settle=False)
+        session.settle(**SETTLE)
+        discard = tree.wait_for_node(session, label="Discard", timeout=3)
         checks.check(discard is not None, "US-SAFE-03 Close asks before discarding")
         if discard is not None:
-            session.click(discard)
-            session.call("settle", SETTLE)
+            navigate.click(session, discard, settle=False)
+            session.settle(**SETTLE)
         checks.check(not unsaved(session), "and discarding leaves nothing unsaved")
 
         open_demo(session)
@@ -197,13 +195,13 @@ def main():
             button(dialog(session), "Browse...") is not None,
             "US-DEMO-02 and offers a Browse",
         )
-        session.shot(os.path.join(SHOT_DIR, "qleany-demo-form.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-demo-form.png"))
 
         # US-DEMO-06: a folder that already holds a project is refused, by name,
         # before anything is written.
         set_destination(session, occupied)
-        session.click(button(dialog(session), "Generate"))
-        session.call("settle", SETTLE)
+        navigate.click(session, button(dialog(session), "Generate"), settle=False)
+        session.settle(**SETTLE)
         panel = dialog(session)
         checks.check(
             says(panel, "already exists") and says(panel, occupied),
@@ -217,12 +215,12 @@ def main():
             os.listdir(occupied) == ["qleany.yaml"],
             "US-DEMO-06 and nothing was written into it",
         )
-        session.shot(os.path.join(SHOT_DIR, "qleany-demo-blocked.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-demo-blocked.png"))
 
         # US-DEMO-01: the real run.
         set_destination(session, target)
-        session.click(button(dialog(session), "Generate"))
-        session.call("settle", {"settle": {"settle_timeout_ms": 500}})
+        navigate.click(session, button(dialog(session), "Generate"), settle=False)
+        session.settle(settle_timeout_ms=500)
 
         # US-DEMO-03: while it runs, nothing gets out of it.
         panel = dialog(session)
@@ -235,14 +233,14 @@ def main():
             button(panel, "Cancel") is None and button(panel, "Generate") is None,
             "US-DEMO-03 and the form's buttons are gone",
         )
-        session.call("inject_key", {"key": "Escape"})
-        session.call("settle", {"settle": {"settle_timeout_ms": 500}})
+        session.tools.inject_key(key="Escape")
+        session.settle(settle_timeout_ms=500)
         panel = dialog(session)
         checks.check(
             bool(panel) and button(panel, "Generate") is None,
             "US-DEMO-03 Escape does not dismiss a running demo",
         )
-        session.shot(os.path.join(SHOT_DIR, "qleany-demo-running.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-demo-running.png"))
 
         # US-DEMO-03: the report moves while it runs.
         #
@@ -281,8 +279,7 @@ def main():
         )
 
         if not finished:
-            checks.finish(PROBE, log)
-            return
+            return checks.finish()
 
         # US-DEMO-04: what you got.
         panel = dialog(session)
@@ -311,7 +308,7 @@ def main():
             not says(panel, "and Slint"),
             "US-DEMO-04 and does not claim one it did not generate",
         )
-        session.shot(os.path.join(SHOT_DIR, "qleany-demo-summary.png"))
+        shot.save(session, os.path.join(SHOT_DIR, "qleany-demo-summary.png"))
 
         # US-DEMO-05: the command, and the copy that confirms itself.
         checks.check(
@@ -321,8 +318,8 @@ def main():
         copy = button(panel, "Copy the command")
         checks.check(copy is not None, "US-DEMO-05 a copy button is offered")
         if copy is not None:
-            session.click(copy)
-            session.call("settle", SETTLE)
+            navigate.click(session, copy, settle=False)
+            session.settle(**SETTLE)
             panel = dialog(session)
             checks.check(
                 button(panel, "Copied") is not None
@@ -360,25 +357,27 @@ def main():
 
         # The demo's manifest is what the application now has open, which is the
         # honest answer: it is what is in the store.
-        session.click(button(dialog(session), "Close"))
-        session.call("settle", SETTLE)
+        navigate.click(session, button(dialog(session), "Close"), settle=False)
+        session.settle(**SETTLE)
         checks.check(not dialog_is_open(session), "US-DEMO-05 Close dismisses the summary")
         checks.check(
-            says(session.nodes(), os.path.join(target, "qleany.yaml")),
+            says(tree.nodes(session), os.path.join(target, "qleany.yaml")),
             "the demo's manifest is the one the application says is open",
         )
+    except Exception as exc:
+        checks.error(f"{type(exc).__name__}: {exc}")
     finally:
         if session:
             session.close()
-        app.terminate()
-        try:
-            app.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            app.kill()
-        shutil.rmtree(sandbox, ignore_errors=True)
+        if app:
+            if checks.exit_code:
+                checks.note(app.log_tail())
+            app.terminate()
+        if sandbox:
+            shutil.rmtree(sandbox, ignore_errors=True)
 
-    checks.finish(PROBE, log)
+    return checks.finish()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

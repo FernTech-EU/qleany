@@ -307,6 +307,44 @@ pub(crate) fn junction_set(
     write_or_recover(junction).insert(id, ids);
 }
 
+/// Validate a complete replacement batch before changing any junction rows.
+/// Ownership exclusivity is per relationship, independently of cascade strength.
+pub(crate) fn validate_junction_updates(
+    junction: &RwLock<HashMap<EntityId, Vec<EntityId>>>,
+    replacements: &[(EntityId, Vec<EntityId>)],
+    exclusive: bool,
+    scalar: bool,
+) -> Result<(), crate::error::RepositoryError> {
+    use std::collections::HashSet;
+    use crate::error::RepositoryError::ConstraintViolation;
+    let mut owners = HashSet::new();
+    for (owner, targets) in replacements {
+        if !owners.insert(*owner) {
+            return Err(ConstraintViolation("duplicate source in relationship batch".into()));
+        }
+        if scalar && targets.len() > 1 {
+            return Err(ConstraintViolation("to-one relationship accepts at most one target".into()));
+        }
+        let mut unique = HashSet::new();
+        if targets.iter().any(|id| !unique.insert(*id)) {
+            return Err(ConstraintViolation("duplicate relationship target".into()));
+        }
+    }
+    if exclusive {
+        let current = read_or_recover(junction);
+        let mut used = HashSet::new();
+        for (_, targets) in current.iter().filter(|(id, _)| !owners.contains(id)) {
+            used.extend(targets.iter().copied());
+        }
+        for (_, targets) in replacements {
+            if targets.iter().any(|id| !used.insert(*id)) {
+                return Err(ConstraintViolation("relationship target already belongs to another source".into()));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn junction_remove(junction: &RwLock<HashMap<EntityId, Vec<EntityId>>>, id: &EntityId) {
     write_or_recover(junction).remove(id);
 }
@@ -481,6 +519,12 @@ macro_rules! impl_write_relationship_methods {
             field: &$field_enum,
             relationships: Vec<($crate::types::EntityId, Vec<$crate::types::EntityId>)>,
         ) -> Result<(), $crate::error::RepositoryError> {
+            for (id, _) in &relationships {
+                if !self.relationship_source_exists(id) {
+                    return Err($crate::error::RepositoryError::ConstraintViolation("relationship source does not exist".into()));
+                }
+            }
+            self.validate_relationship_updates(field, &relationships, &[])?;
             let jn = self.resolve_junction(field);
             for (left_id, entities) in relationships {
                 $crate::database::hashmap_store::junction_set(jn, left_id, entities);
@@ -494,12 +538,7 @@ macro_rules! impl_write_relationship_methods {
             field: &$field_enum,
             right_ids: &[$crate::types::EntityId],
         ) -> Result<(), $crate::error::RepositoryError> {
-            $crate::database::hashmap_store::junction_set(
-                self.resolve_junction(field),
-                *id,
-                right_ids.to_vec(),
-            );
-            Ok(())
+            self.set_relationship_multi(field, vec![(*id, right_ids.to_vec())])
         }
 
         fn move_relationship_ids(
@@ -509,6 +548,18 @@ macro_rules! impl_write_relationship_methods {
             ids_to_move: &[$crate::types::EntityId],
             new_index: i32,
         ) -> Result<Vec<$crate::types::EntityId>, $crate::error::RepositoryError> {
+            if !self.relationship_is_ordered(field) {
+                return Err($crate::error::RepositoryError::ConstraintViolation("only ordered relationships can be moved".into()));
+            }
+            let current = $crate::database::hashmap_store::junction_get(self.resolve_junction(field), id);
+            let mut seen = std::collections::HashSet::new();
+            if ids_to_move.iter().any(|target| !seen.insert(*target) || !current.contains(target)) {
+                return Err($crate::error::RepositoryError::ConstraintViolation("move requires distinct existing relationship members".into()));
+            }
+            self.validate_relationship_updates(field, &[(*id, current)], &[])?;
+            if !self.relationship_source_exists(id) {
+                return Err($crate::error::RepositoryError::ConstraintViolation("relationship source does not exist".into()));
+            }
             Ok($crate::database::hashmap_store::junction_move_ids(
                 self.resolve_junction(field),
                 id,
