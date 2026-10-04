@@ -4528,7 +4528,7 @@ checksum = "b5a041e753da8b807c9255f28de81879c78c876392ff2469cde94799b2896b9d"
 
 [[package]]
 name = "qleany"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4555,7 +4555,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-common"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4569,7 +4569,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-cpp-qt-file-generation"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4589,7 +4589,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-direct-access"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4602,7 +4602,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-file-generation-shared-steps"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4615,7 +4615,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-frontend"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4632,7 +4632,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-handling-app-lifecycle"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4643,7 +4643,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-handling-manifest"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4660,7 +4660,7 @@ dependencies = [
 
 [[package]]
 name = "qleany-macros"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -4670,11 +4670,11 @@ dependencies = [
 
 [[package]]
 name = "qleany-naming"
-version = "1.12.0"
+version = "2.0.0"
 
 [[package]]
 name = "qleany-rust-file-generation"
-version = "1.12.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "chrono",
