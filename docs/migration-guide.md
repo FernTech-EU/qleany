@@ -4,26 +4,14 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
-## v1.11.0 to next — Teksilo becomes a Rust UI target (schema v6)
+## v1.12.0 to v2.0.0 — Teksilo editor and stricter relationships
 
-**Qleany version**: unreleased
+**Qleany version**: 2.0.0
 
-### What changed
-
-A new UI flag, `rust_teksilo`, generates `crates/teksilo_ui/` — a complete Teksilo
-desktop application over the same `frontend` crate the other Rust targets use. See
-`qleany docs manifest` for what it emits.
-
-Schema goes to **v6**. The change is additive, so an existing manifest needs no
-edit: `qleany` migrates a v5 manifest in memory on load, and rewrites the version
-the next time it saves.
-
-```yaml
-ui:
-  rust_cli: true
-  rust_teksilo: true
-  rust_slint: false
-```
+The manifest schema remains **v6**. The major version reflects the removal of
+Qleany's legacy Slint application and breaking generated Rust relationship APIs.
+Existing v6 manifests need no schema migration; review the relationship changes
+below before regenerating an existing project.
 
 ### Qleany's legacy Slint application removed
 
@@ -89,6 +77,36 @@ the child. Existing stored data is not rewritten automatically by regeneration.
 
 Saving an incomplete Entity field with no valid referenced entity now returns an
 error and preserves the existing manifest file instead of panicking.
+
+### Editor save and close behavior
+
+Text edits enable Save immediately, and saving includes text still being edited.
+The title-bar close button offers Save, Discard and Cancel for unsaved work.
+Save failures remain visible and block closing until the error is resolved or
+the user explicitly discards the changes.
+
+---
+
+## v1.11.0 to v1.12.0 — Teksilo becomes a Rust UI target (schema v6)
+
+**Qleany version**: 1.12.0
+
+### What changed
+
+A new UI flag, `rust_teksilo`, generates `crates/teksilo_ui/` — a complete Teksilo
+desktop application over the same `frontend` crate the other Rust targets use. See
+`qleany docs manifest` for what it emits.
+
+Schema goes to **v6**. The change is additive, so an existing manifest needs no
+edit: `qleany` migrates a v5 manifest in memory on load, and rewrites the version
+the next time it saves.
+
+```yaml
+ui:
+  rust_cli: true
+  rust_teksilo: true
+  rust_slint: false
+```
 
 ### Breaking: the generated Slint binary is renamed
 
