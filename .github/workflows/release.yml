@@ -46,8 +46,11 @@ jobs:
           fi
           echo "Version validated: $CARGO_VERSION"
 
-      - name: Run tests
-        run: cargo test --all-features
+      - name: Test workspace with the real UI backend
+        run: cargo test --workspace --locked
+
+      - name: Test the UI mocks
+        run: cargo test -p qleany --features mocks --locked
 
   # Build release artifacts for multiple platforms
   build:
@@ -173,15 +176,7 @@ jobs:
 
           # `select(.publish != [])` drops the members that carry
           # `publish = false`, which `cargo metadata` reports as `"publish": []`.
-          # Today that is qleany-slint-ui. Such a crate is on no index and never
-          # will be, so `crate_published` always reports it missing and `pending`
-          # is permanently one too high. That does not fail a release: a publish
-          # with everything real excluded warns "nothing to publish" and exits 0.
-          # What it does break is the loop's own bookkeeping: the
-          # "(attempt N, M pending)" line overstates the work left, and the
-          # "All crates already published." early exit can never fire, so every
-          # re-run shells out to a full `cargo publish --workspace` that has
-          # nothing to do.
+          # Unpublished helper crates must not enter the pending-release count.
           mapfile -t CRATES < <(cargo metadata --no-deps --format-version 1 \
             | jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"')
 

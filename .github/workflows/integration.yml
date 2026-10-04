@@ -67,9 +67,7 @@ jobs:
       - name: Build
         run: cargo build --workspace
 
-      # `qleany` is the Teksilo binary from step 2 onwards, and it carries the
-      # CLI, which is what `gen` below needs. The Slint crate now builds as
-      # `qleany-slint` and is not used here.
+      # The Teksilo `qleany` binary also carries the CLI used by `gen` below.
       - name: Upload binary
         uses: actions/upload-artifact@v7
         with:

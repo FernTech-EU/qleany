@@ -89,12 +89,12 @@ def main():
             f"US-UIT-01 a Rust manifest offers the Rust targets, got {list(boxes)}",
         )
 
-        # Qleany's own manifest: CLI, Teksilo and Slint on, the two mobile targets
+        # Qleany's own manifest: CLI and Teksilo on; Slint and mobile targets
         # off. Reading them is what proves the flags persist rather than defaulting.
         for target, expected in (
             ("CLI", "true"),
             ("Teksilo (recommended)", "true"),
-            ("Slint", "true"),
+            ("Slint", "false"),
             ("iOS (UniFFI)", "false"),
             ("Android (UniFFI)", "false"),
         ):
@@ -115,17 +115,20 @@ def main():
                 checks.check(read_manifest(manifest).get("ui", {}).get(key, False) == expected,
                              f"{label}: toggled value {expected} persists in its exact YAML field")
 
-        # A flag can be turned off, and it stays off across a visit to another
-        # screen: this is the whole write path, through a single that has to be
-        # re-pointed when the screen is rebuilt.
+        # Slint remains a supported generation target. Turning it on survives
+        # navigation even though Qleany itself no longer ships a Slint editor.
         navigate.click(session, checkboxes(session)["Slint"], settle=False)
         session.settle(**SETTLE)
         go_to(session, "Home")
         go_to(session, "User Interface")
         checks.check(
-            checkboxes(session)["Slint"].get("toggled") == "false",
-            "US-UIT-01 a target that was turned off stays off",
+            checkboxes(session)["Slint"].get("toggled") == "true",
+            "US-UIT-01 enabling Slint generation survives navigation",
         )
+
+        navigate.click(session, checkboxes(session)["Slint"])
+        checks.check(checkboxes(session)["Slint"].get("toggled") == "false",
+                     "Slint generation can be disabled again")
 
         # Changing the language swaps the section clean.
         go_to(session, "Project")

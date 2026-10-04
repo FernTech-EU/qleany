@@ -772,6 +772,6 @@ features:
         type: string
 ui:
   rust_cli: true
-  rust_slint: true
+  rust_slint: false
   rust_teksilo: true
   cpp_qt_qtwidgets: true

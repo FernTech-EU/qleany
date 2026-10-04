@@ -9,14 +9,11 @@ members = [
     "crates/rust_file_generation",
     "crates/handling_app_lifecycle",
     "crates/file_generation_shared_steps",
-    "crates/slint_ui",
     "crates/teksilo_ui",
     "crates/macros",
     "crates/naming",
 ]
-# A bare `cargo build` builds the application that ships. That is the Teksilo UI
-# from step 2 onwards; the Slint crate is built explicitly with `-p qleany` for
-# as long as it is still here.
+# A bare `cargo build` builds the Teksilo application and its CLI.
 default-members = [
     "crates/teksilo_ui",
 ]

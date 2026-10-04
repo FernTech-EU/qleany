@@ -1,11 +1,9 @@
 name: "Install Linux system dependencies"
-description: "Install the font, X11, Wayland and keyboard libraries that Qleany's two UIs need to build and run on Linux"
+description: "Install the font, X11, Wayland and keyboard libraries that Qleany and generated UI examples need to build and run on Linux"
 
-# One list for two UI toolkits, because this repo builds both. `crates/slint_ui`
-# needs fontconfig, freetype and the xcb shape/xfixes extensions; `crates/teksilo_ui`
-# brings in winit and wgpu, which need the display-server and keyboard headers
-# instead. A job that compiles the workspace compiles both crates, so splitting
-# the list per job would only mean two ways to get it wrong.
+# The Teksilo application uses winit/wgpu display-server and keyboard libraries.
+# Generated Slint examples still need fontconfig, freetype and xcb extensions;
+# integration tests compile them, so this shared dependency list covers both.
 #
 # Qleany does NOT enable teksilo's `web-view` feature, so the gtk/webkit2gtk/soup/
 # javascriptcore stack that teksilo's own CI installs is deliberately absent here.

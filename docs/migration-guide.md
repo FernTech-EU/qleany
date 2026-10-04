@@ -25,6 +25,14 @@ ui:
   rust_slint: false
 ```
 
+### Qleany's legacy Slint application removed
+
+Qleany's editor now uses Teksilo exclusively. The legacy `crates/slint_ui`
+application and `qleany-slint` binary have been removed; use `cargo run --release`
+or the `qleany` binary instead. Qleany's own manifest disables `rust_slint` so
+regeneration does not recreate the retired application. The `rust_slint` target
+and templates remain available for generated user projects.
+
 ### C++/Qt query lifetime and shutdown fix
 
 Regenerate the C++/Qt undo/redo infrastructure to pick up the query lifetime

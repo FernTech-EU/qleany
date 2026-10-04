@@ -69,7 +69,6 @@ MACHINE_FILES = [
 
 HAND_FILES = [
     "Cargo.toml",
-    "crates/slint_ui/Cargo.toml",
     "crates/teksilo_ui/Cargo.toml",
     "crates/teksilo_ui/src/lib.rs",
     "crates/teksilo_ui/src/app.rs",

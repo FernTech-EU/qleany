@@ -156,7 +156,7 @@ Since v1.7.4, `start_event_loop` returns a `JoinHandle<()>` and blocks on a `flu
 
 The Rust event system uses channels. If you're not receiving events, verify you've subscribed before the events were published. Events published before subscription are lost.
 
-Also check that you're actually polling the receiver. In synchronous code, call `rx.recv()` or `rx.try_recv()`. If using async, ensure the receiver task is being polled. Check `crates/slint_ui/src/event_hub_client.rs` of Qleany repository for an example.
+Also check that you're actually polling the receiver. In synchronous code, call `rx.recv()` or `rx.try_recv()`. If using async, ensure the receiver task is being polled. See `crates/frontend/src/event_hub_client.rs` for the event client and `crates/teksilo_ui/src/event_source.rs` for its GUI integration in the Qleany repository.
 
 ---
 

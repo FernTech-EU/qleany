@@ -171,9 +171,8 @@ jobs:
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings -A deprecated
 
       # --all-features excludes qleany for the reason spelled out in
-      # the test job's matrix. `Lint (minimal)` above is --workspace, so it still
-      # lints that crate's real arm; `Lint (ultra-minimal)` does not, because
-      # without --workspace it resolves to default-members, which is slint_ui alone.
+      # the test job's matrix. The minimal lint jobs cover its real arm;
+      # the default workspace member is the Teksilo application.
       - name: Lint (full)
         run: cargo clippy --workspace --all-features --exclude qleany --all-targets -- -D warnings -A deprecated
 
