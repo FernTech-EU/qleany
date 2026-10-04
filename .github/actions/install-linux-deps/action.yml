@@ -1,0 +1,38 @@
+name: "Install Linux system dependencies"
+description: "Install the font, X11, Wayland and keyboard libraries that Qleany's two UIs need to build and run on Linux"
+
+# One list for two UI toolkits, because this repo builds both. `crates/slint_ui`
+# needs fontconfig, freetype and the xcb shape/xfixes extensions; `crates/teksilo_ui`
+# brings in winit and wgpu, which need the display-server and keyboard headers
+# instead. A job that compiles the workspace compiles both crates, so splitting
+# the list per job would only mean two ways to get it wrong.
+#
+# Qleany does NOT enable teksilo's `web-view` feature, so the gtk/webkit2gtk/soup/
+# javascriptcore stack that teksilo's own CI installs is deliberately absent here.
+runs:
+  using: "composite"
+  steps:
+    - name: Install apt packages
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential \
+          pkg-config \
+          libfontconfig1-dev \
+          libfreetype6-dev \
+          libxcb-shape0-dev \
+          libxcb-xfixes0-dev \
+          libxcb1-dev \
+          libx11-dev \
+          libxkbcommon-dev \
+          libwayland-dev
+        # Runtime, not build: winit reaches xkbcommon through `xkbcommon-dl`, which
+        # `dlopen`s `libxkbcommon-x11.so.0` as soon as an X11 event loop is created.
+        # Nothing needs it to compile, so a check-only job would never notice it is
+        # missing, but any job that actually opens a window panics without it and the
+        # runner image does not carry it. `-0` rather than `-dev` is deliberate: the
+        # loader asks for the SONAME, and the package pulls in the `libxcb-xkb1` that
+        # library links against.
+        sudo apt-get install -y --no-install-recommends \
+          libxkbcommon-x11-0

@@ -7,7 +7,8 @@ use anyhow::Result;
 use common::database::CommandUnitOfWork;
 use common::entities::UserInterface;
 use common::entities::{
-    Dto, DtoField, Entity, Feature, Field, FieldRelationshipType, Global, Root, UseCase, Workspace,
+    Dto, DtoField, Entity, Feature, Field, FieldRelationshipType, FieldType, Global, Root, UseCase,
+    Workspace,
 };
 use common::types::EntityId;
 
@@ -122,6 +123,21 @@ impl SaveUseCase {
         let dto_fields = uow.get_dto_field_multi(&dto_field_ids)?;
         let dto_fields = dto_fields.into_iter().flatten().collect::<Vec<DtoField>>();
 
+        // Incomplete UI edits must report a save error, never panic or truncate
+        // the previous file. Check references before committing path changes.
+        for field in &fields {
+            if field.field_type == FieldType::Entity
+                && !field
+                    .entity
+                    .is_some_and(|id| entities.iter().any(|entity| entity.id == id))
+            {
+                anyhow::bail!(
+                    "Field '{}': select a referenced entity before saving",
+                    field.name
+                );
+            }
+        }
+
         // update manifest path in workspace only if it changed
         let new_manifest_path = PathBuf::from(dto.manifest_path.clone())
             .parent()
@@ -186,11 +202,6 @@ impl SaveUseCase {
                             FieldRelationshipType::ManyToOne => "many_to_one",
                             FieldRelationshipType::ManyToMany => "many_to_many",
                         };
-                        if field.relationship == FieldRelationshipType::ManyToMany
-                            && entity.is_none()
-                        {
-                            panic!("Many-to-many field must have an entity");
-                        }
                         let relationship = if field_type == "entity" {
                             Some(relationship_str.to_string())
                         } else {

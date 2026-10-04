@@ -1,12 +1,15 @@
+//! The Slint UI, now a window and nothing else.
+//!
+//! The command line moved to `crates/teksilo_ui` in step 2 of the Teksilo port,
+//! and took the `qleany` binary name with it. What is left here is
+//! `qleany-slint`, which opens a window or does nothing.
+
 mod app_context;
-mod cli;
-mod cli_handlers;
 mod commands;
 mod common_tools;
 mod event_hub_client;
 mod tabs;
 
-use crate::cli::run_cli;
 use crate::commands::handling_manifest_commands;
 use app_context::AppContext;
 use event_hub_client::EventHubClient;
@@ -32,9 +35,7 @@ fn main() {
         }
     }
 
-    if let Some(_args) = run_cli(&app_context) {
-        run_slint(&app_context);
-    }
+    run_slint(&app_context);
 
     // Cleanup on exit
     log::info!("Shutting down");

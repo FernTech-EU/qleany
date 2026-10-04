@@ -25,6 +25,59 @@ ui:
   rust_slint: false
 ```
 
+### C++/Qt query lifetime and shutdown fix
+
+Regenerate the C++/Qt undo/redo infrastructure to pick up the query lifetime
+fix. Shared queries no longer also belong to a Qt parent, preventing an invalid
+free when a pending query outlives its handler. Concurrent queries are tracked
+individually, and each awaiting coroutine resumes only for its own completion.
+Pending query completion is also safe after the undo/redo system is destroyed.
+No manifest changes are needed.
+
+### Breaking: Rust relationship constraints and Teksilo weak lists
+
+Regenerate the Rust infrastructure and Teksilo models together. Schema v6 and
+valid manifests remain unchanged; the generated APIs now reject operations that
+previously produced inconsistent relationships.
+
+- Unordered and ordered one-to-many relationships enforce a single source per
+  target, independently of `strong`. Use `many_to_many` for shared references.
+  Keep a separate strong owner for shared entities.
+- Relationship writes reject duplicate target IDs instead of storing duplicate
+  links. Deduplicate imported data before submitting it. Failed batches are
+  atomic; valid transfers may clear the old source and set the new source in the
+  same replacement batch.
+- `move_relationship` works only for `ordered_one_to_many`, with distinct IDs
+  already attached to that source. To attach or detach, use `set_relationship`;
+  do not use a move as insertion. Unordered iteration order is not guaranteed.
+- A Teksilo list only gets `create()`, `update()` and `remove()` when it represents
+  the target's exact strong owning field. Weak lists no longer accidentally get
+  these methods when another field of the same source type owns the target.
+  Replace weak-list mutations with frontend relationship commands; use the
+  target's update command to edit its data. Deleting a target is different from
+  unlinking it and must be an explicit target deletion.
+
+Qleany's own `UseCase.entities` field is now `many_to_many`: several use cases
+can reference the same entity. Its generated Teksilo model no longer offers
+reordering. No feature entity references are removed by this correction.
+
+Run `qleany check` before regeneration:
+
+- **C49:** `many_to_one` and `many_to_many` must have `strong: false`.
+- **W06:** multiple strong owning fields on one parent type make the generated
+  creation API ambiguous. Prefer one owning field, or create an orphan and
+  explicitly attach it to the desired field. Existing manifests using this
+  pattern remain supported.
+
+Previously generated Rust stores could contain duplicate links or a child under
+multiple one-to-many sources. Audit application persistence/imports, choose the
+correct owner and remove duplicate links before loading them through the stricter
+APIs. Removing a former owner before resolving shared strong ownership can delete
+the child. Existing stored data is not rewritten automatically by regeneration.
+
+Saving an incomplete Entity field with no valid referenced entity now returns an
+error and preserves the existing manifest file instead of panicking.
+
 ### Breaking: the generated Slint binary is renamed
 
 A Slint project's executable is now **`{app_snake_name}-slint`** rather than

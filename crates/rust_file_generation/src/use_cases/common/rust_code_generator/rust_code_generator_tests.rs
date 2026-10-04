@@ -1309,3 +1309,43 @@ fn entity_units_of_work_template_wires_the_guard_and_renders_valid_rust() {
     );
     assert_is_valid_rust(&code, "entity_units_of_work");
 }
+
+#[test]
+fn teksilo_list_mutations_require_the_exact_strong_owning_field() {
+    let template = include_str!("../templates/teksilo/teksilo_entity_field_list_model.tera");
+    for (kind, strong, owning_field, can_mutate, can_move) in [
+        ("ManyToMany", false, "tags", false, false),
+        ("OneToMany", false, "tags", false, false),
+        ("OneToMany", true, "tags", true, false),
+        ("OneToMany", true, "other_tags", false, false),
+        ("OrderedOneToMany", true, "tags", true, true),
+        ("OrderedOneToMany", false, "tags", false, true),
+    ] {
+        let snapshot = serde_json::json!({
+            "system": {"inner": {"version":"test"}},
+            "file": {"inner": {"entity":"1", "field":10, "template_name":"test"}},
+            "entities": {
+                "1": {"snake_name":"workspace", "pascal_name":"Workspace", "inner":{"undoable":true},
+                    "fields":[{"snake_name":"tags", "pascal_name":"Tags", "list_model_display_field_snake_name":null,
+                        "inner":{"id":10, "entity":"2", "relationship":kind, "strong":strong}}]},
+                "2": {"snake_name":"tag", "pascal_name":"Tag", "normal_fields":[], "inner":{"undoable":true},
+                    "owner_snake_name":"workspace", "owner_relationship_field_snake_name":owning_field}
+            }
+        });
+        let mut context = tera::Context::new();
+        context.insert("s", &snapshot);
+        let code = tera::Tera::one_off(template, &context, false).unwrap();
+        // Verify both the real implementation and its mock twin's public API.
+        for method in ["create", "update", "remove"] {
+            assert_eq!(
+                code.matches(&format!("pub fn {method}(")).count(),
+                if can_mutate { 2 } else { 0 },
+                "{kind}, strong={strong}, owner={owning_field}: {method}"
+            );
+        }
+        assert_eq!(
+            code.matches("pub fn move_to(").count(),
+            if can_move { 2 } else { 0 }
+        );
+    }
+}

@@ -41,7 +41,7 @@ jobs:
   # [[ "${{ needs.coverage.result }}" != "success" ]] || \
   ci:
     name: CI
-    needs: [test, check, rustfmt, clippy, docs]
+    needs: [test, check, rustfmt, clippy, docs, teksilo-ui, territory]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -50,6 +50,8 @@ jobs:
           if [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.check.result }}" != "success" ]] || \
              [[ "${{ needs.rustfmt.result }}" != "success" ]] || \
+             [[ "${{ needs.teksilo-ui.result }}" != "success" ]] || \
+             [[ "${{ needs.territory.result }}" != "success" ]] || \
              [[ "${{ needs.docs.result }}" != "success" ]]; then
             echo "One or more jobs failed"
             exit 1
@@ -61,47 +63,63 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # `ui_exclude` rides alongside `flags` because `--all-features` over this
+        # workspace would turn on `qleany`'s `mocks` feature, which is a
+        # second `#[cfg]`-selected implementation of every model, not a compile
+        # target. A row that got it would build and test the fabricated UI and
+        # report that as the UI passing. The `teksilo-ui` job gates that crate on
+        # both arms instead.
+        #
+        # Only the `--all-features` rows carry the exclude: a row without
+        # `--all-features` has nothing to exclude the crate from, and the real,
+        # backend-backed arm is exactly what it should be compiling.
         include:
           - name: linux
             os: ubuntu-latest
             rust: stable
             flags: "--all-features"
+            ui_exclude: "--exclude qleany"
           - name: windows
             os: windows-latest
             rust: stable
             flags: "--all-features"
+            ui_exclude: "--exclude qleany"
           - name: mac
             os: macos-latest
             rust: stable
             flags: "--all-features"
+            ui_exclude: "--exclude qleany"
           - name: minimal
             os: ubuntu-latest
             rust: stable
             flags: "--no-default-features"
+            ui_exclude: ""
+          # The row that compiles and tests the real Teksilo UI inside this matrix:
+          # empty flags means default features, so `mocks` is off and the crate is
+          # not excluded.
           - name: default
             os: ubuntu-latest
             rust: stable
             flags: ""
+            ui_exclude: ""
           - name: next
             os: ubuntu-latest
             rust: stable
             flags: "--all-features"
+            ui_exclude: "--exclude qleany"
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # wgpu and winit arrived with the Teksilo UI crate, and a cold first build is
+    # long.
+    timeout-minutes: 60
     steps:
+      # The composite action lives in this repo, so checkout has to run first or
+      # `uses: ./.github/...` resolves to nothing.
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -112,15 +130,26 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ matrix.name }}
+          # A first run that times out still warms the cache, so the retry succeeds
+          # instead of timing out identically.
+          cache-on-failure: true
 
       - name: Build
-        run: cargo build --workspace --all-targets ${{ matrix.flags }}
+        run: cargo build --workspace --all-targets ${{ matrix.flags }} ${{ matrix.ui_exclude }}
+
+      # The exclude above takes the Teksilo UI crate off every `--all-features` row,
+      # and the `teksilo-ui` job that gates it properly is ubuntu-only. Without this
+      # step the crate, which is the one that drags in wgpu and winit, would never be
+      # compiled on Windows or macOS anywhere in the repository. `-p` with no feature
+      # flag is the real arm, so this can never select `mocks`.
+      - name: Build the Teksilo UI (real arm, every platform)
+        run: cargo build -p qleany --all-targets
 
       - name: Test
-        run: cargo test --workspace ${{ matrix.flags }}
+        run: cargo test --workspace ${{ matrix.flags }} ${{ matrix.ui_exclude }}
 
       - name: Test (benches)
-        run: cargo test --workspace --benches ${{ matrix.flags }}
+        run: cargo test --workspace --benches ${{ matrix.flags }} ${{ matrix.ui_exclude }}
 
       - name: Test (ultra-minimal)
         if: matrix.name == 'minimal'
@@ -129,36 +158,37 @@ jobs:
   check:
     name: Check (${{ matrix.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A cold wgpu/winit build is long even for `cargo check`.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
+        # Every row here is `--all-features`, so every row excludes the Teksilo UI
+        # crate: see the note on the test matrix. The MSRV row is not the reason for
+        # the exclude, `cargo +1.90.0 check -p qleany --all-features`
+        # passes; the reason is that `--all-features` would pick the mocks arm.
         include:
           - name: msrv
             rust: "1.90.0"
             target: ""
             flags: "--all-features"
+            ui_exclude: "--exclude qleany"
           - name: debug
             rust: stable
             target: ""
             flags: "--all-features"
+            ui_exclude: "--exclude qleany"
           - name: release
             rust: stable
             target: ""
             flags: "--all-features --release"
+            ui_exclude: "--exclude qleany"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install system dependencies (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -170,43 +200,137 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: check-${{ matrix.name }}
+          # A first run that times out still warms the cache, so the retry succeeds
+          # instead of timing out identically.
+          cache-on-failure: true
 
       - name: Check
-        run: cargo check --workspace --all-targets ${{ matrix.flags }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
+        run: cargo check --workspace --all-targets ${{ matrix.flags }} ${{ matrix.ui_exclude }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
-  docs:
-    name: Documentation
+  # The one place `qleany` is properly gated, since the `--all-features`
+  # rows above exclude it. Both arms are covered, and the mocks arm is built, tested
+  # AND linted: the mocks arm is real alternate logic, and clippy only lints the
+  # `#[cfg]` arm it actually compiled, so the default pass says nothing about it.
+  # Every command is scoped with `-p`; never combine `--features mocks` with
+  # `--workspace`.
+  teksilo-ui:
+    name: Teksilo UI
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # wgpu and winit from a cold cache, twice over, once per feature arm.
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
       - name: Install system dependencies (Linux)
+        uses: ./.github/actions/install-linux-deps
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: teksilo-ui
+          # A first run that times out still warms the cache, so the retry succeeds
+          # instead of timing out identically.
+          cache-on-failure: true
+
+      - name: Build (default arm)
+        run: cargo build -p qleany --all-targets
+
+      - name: Test (default arm)
+        run: cargo test -p qleany
+
+      - name: Lint (default arm)
+        run: cargo clippy -p qleany --all-targets -- -D warnings -A deprecated
+
+      - name: Documentation (default arm)
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc -p qleany --no-deps --document-private-items
+
+      - name: Build (mocks arm)
+        run: cargo build -p qleany --all-targets --features mocks
+
+      - name: Test (mocks arm)
+        run: cargo test -p qleany --features mocks
+
+      - name: Lint (mocks arm)
+        run: cargo clippy -p qleany --all-targets --features mocks -- -D warnings -A deprecated
+
+      # The `check` matrix excludes this crate from its `--all-features` rows, and
+      # the MSRV row is one of them, so without this nothing on a pull request would
+      # compile the Teksilo UI at 1.90.0 any more. rust-next.yml lints it at 1.90.0
+      # but runs monthly. Installed last, since this action makes its toolchain the
+      # default and every step above wants stable.
+      - name: Install the MSRV toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.90.0"
+
+      - name: Check at the MSRV (both arms)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+          cargo +1.90.0 check -p qleany --all-targets
+          cargo +1.90.0 check -p qleany --all-targets --features mocks
+
+  # Asserts which files belong to the generator and which are ours. Regenerating
+  # over a hand-edited file loses the edit silently, and the loss is only noticed
+  # much later.
+  territory:
+    name: Generated territory
+    runs-on: ubuntu-latest
+    # Reads the tree and exits; it needs neither a Rust toolchain nor apt.
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Check generated territory
+        run: python3 tools/check_generated_territory.py
+
+      # A lockfile that names a directory on one machine fails `--locked`
+      # everywhere else, and without `--locked` it silently resolves to a
+      # different version of the crate, which is the worse of the two.
+      - name: Check the lockfiles are portable
+        run: python3 tools/check_lockfile_is_portable.py
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install system dependencies (Linux)
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
+        with:
+          # A first run that times out still warms the cache, so the retry succeeds
+          # instead of timing out identically.
+          cache-on-failure: true
 
+      # Excluded for the same reason as the `--all-features` build rows: the flag
+      # would select the mocks arm. The `teksilo-ui` job runs rustdoc on that crate.
       - name: Check documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --workspace --all-features --no-deps --document-private-items
+        run: cargo doc --workspace --all-features --exclude qleany --no-deps --document-private-items
 
   rustfmt:
     name: Format
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # `cargo install cargo-teksilo-fmt` builds it from source on every run, which
+    # is most of this budget; the two format checks themselves take seconds.
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -219,6 +343,16 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      # `cargo fmt` leaves the body of a `teksu!` invocation byte-for-byte alone,
+      # because it cannot parse a macro body it does not know. The UI crate is
+      # mostly `teksu!`, so without this second pass most of it is unformatted.
+      # The two do not overlap: teksilo-fmt touches only what is inside the macro.
+      - name: Install cargo-teksilo-fmt
+        run: cargo install cargo-teksilo-fmt --locked
+
+      - name: Check teksu! formatting
+        run: cargo teksilo-fmt --check crates
+
   clippy:
     if: false  # Disabled to avoid false negatives on CI
     name: Clippy
@@ -229,14 +363,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install system dependencies (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -254,10 +381,10 @@ jobs:
         run: cargo clippy --workspace --no-default-features --all-targets -- -D warnings -A deprecated
 
       - name: Lint (full)
-        run: cargo clippy --workspace --all-features --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany --all-targets -- -D warnings -A deprecated
 
       - name: Lint (release)
-        run: cargo clippy --workspace --all-features --release --all-targets -- -D warnings -A deprecated
+        run: cargo clippy --workspace --all-features --exclude qleany --release --all-targets -- -D warnings -A deprecated
 
   coverage:
     if: false  # Disabled to avoid false negatives on CI
@@ -269,14 +396,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install system dependencies (Linux)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
-            libxkbcommon-dev
+        uses: ./.github/actions/install-linux-deps
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -290,7 +410,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Collect coverage data
-        run: cargo llvm-cov --all-features --workspace --lcov --no-cfg-coverage --output-path lcov.info
+        # Excluded for the same reason as the clippy job above: `--all-features`
+        # selects the Teksilo UI's `mocks` arm, so a coverage run that kept it would
+        # report the fabricated models' coverage as the UI's.
+        run: cargo llvm-cov --all-features --workspace --exclude qleany --lcov --no-cfg-coverage --output-path lcov.info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7

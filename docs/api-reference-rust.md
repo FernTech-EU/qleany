@@ -273,7 +273,7 @@ pub fn set_relationship(
 ) -> Result<()>
 ```
 
-Replaces the relationship. The `CarRelationshipDto` contains the entity ID, the relationship field, and the new list of related IDs.
+Replaces the relationship. The `CarRelationshipDto` contains the entity ID, the relationship field, and the new list of related IDs. The source and targets must exist and target IDs must be distinct. One-to-many targets cannot already belong to another source in the same relationship, even when the relationship is weak. Many-to-many permits sharing. Invalid writes return an error without changing the relationship. The repository-level `set_relationship_multi` validates the whole replacement batch before applying it, allowing atomic transfers between sources.
 
 #### move_relationship
 
@@ -291,7 +291,7 @@ pub fn move_relationship(
 ) -> Result<Vec<EntityId>>
 ```
 
-Reorders specific related IDs within an ordered relationship. Takes the entity ID, the relationship field, the IDs to move, and the new index (`-1` means append at end). Returns the reordered list of related IDs.
+Reorders specific related IDs within an ordered relationship. Takes the entity ID, the relationship field, the IDs to move, and the new index (`-1` means append at end). Returns the reordered list of related IDs. Only `ordered_one_to_many` is supported. Every moved ID must already belong to this source and occur only once in the request; missing IDs and other relationship types return an error without mutation. Use `set_relationship` to attach or detach targets.
 
 ### Usage Examples
 

@@ -11,7 +11,8 @@
 #   ./run_tests.sh --cpp-qt         Only run the C++/Qt example (generate, build, test).
 #   ./run_tests.sh --no-cleanup      Keep build directories after the run.
 #   ./run_tests.sh --deep-clean      Also drop tests/rust/target (cold rebuild next run).
-#   ./run_tests.sh --no-lints        Skip the lint gate (fmt, clippy, rustdoc, typos).
+#   ./run_tests.sh --no-lints        Skip the lint gate (fmt, teksilo-fmt, clippy,
+#                                    rustdoc, typos, mdbook, lockfile, generated territory).
 #   ./run_tests.sh --install-deps    Install Ubuntu packages first (Qt6, QCoro, Rust).
 #
 # Options can be combined, for example:
@@ -86,7 +87,8 @@ while [[ $# -gt 0 ]]; do
             echo "  --cpp-qt         Only process the C++/Qt example"
             echo "  --no-cleanup     Keep generated temp/ directories after the run"
             echo "  --deep-clean     Also remove tests/rust/target (forces a cold rebuild)"
-            echo "  --no-lints       Skip the lint gate (fmt, clippy, rustdoc, typos)"
+            echo "  --no-lints       Skip the lint gate (fmt, teksilo-fmt, clippy, rustdoc,"
+            echo "                   typos, mdbook, lockfile, generated territory)"
             echo "  -h, --help       Show this help message"
             echo ""
             echo "When neither --rust nor --cpp-qt is given, both examples are processed."
@@ -176,16 +178,43 @@ if ! $GENERATE_ONLY && ! $NO_LINTS; then
     cargo fmt --all -- --check
 
     echo ""
+    echo "--- Lints: cargo teksilo-fmt ---"
+    # `cargo fmt` walks past the bodies of `teksu!` blocks, so crates/teksilo_ui
+    # has a whole layout language no other gate here reads.
+    if command -v cargo-teksilo-fmt >/dev/null 2>&1; then
+        # `crates` rather than the whole tree, matching ci.yml's rustfmt job: with
+        # no path it walks the working directory, which after a run of this script
+        # also holds tests/rust/tested_project, several hundred generated files
+        # that are not ours to format.
+        cargo teksilo-fmt --check crates
+    else
+        echo "⚠ cargo teksilo-fmt is not installed: teksu! macro bodies are NOT checked locally."
+        echo "⚠ Install: cargo install cargo-teksilo-fmt"
+    fi
+
+    echo ""
     echo "--- Lints: cargo clippy ---"
-    # CI's clippy job is disabled (`if: false` in ci.yml), so this is the only
-    # place it runs at all.
-    cargo clippy --workspace --all-targets -- -D warnings
+    # ci.yml's clippy job is disabled (`if: false`), so no pull request runs
+    # clippy over the workspace at all; rust-next.yml does, once a month. This is
+    # the gate that catches it before either.
+    #
+    # `-A deprecated` matches every clippy invocation in ci.yml and
+    # rust-next.yml. Without it a deprecation inside a dependency fails here and
+    # passes there, which is backwards for a gate whose job is to catch what CI
+    # catches.
+    cargo clippy --workspace --all-targets -- -D warnings -A deprecated
 
     echo ""
     echo "--- Lints: rustdoc ---"
     # Mirrors the Documentation job. `--document-private-items` is what turns an
     # unresolved intra-doc link in a generated file into an error.
-    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --no-deps --document-private-items
+    #
+    # `--all-features` turns on teksilo_ui's `mocks` feature, which swaps in the
+    # fabricated-data twin of every model, so a workspace-wide pass would
+    # document the mock arm and say nothing about the real one. Exclude the
+    # crate here and document it on its default arm just below.
+    RUSTDOCFLAGS="-D warnings" cargo doc --workspace --all-features --exclude qleany --no-deps --document-private-items
+    RUSTDOCFLAGS="-D warnings" cargo doc -p qleany --no-deps --document-private-items
 
     echo ""
     echo "--- Lints: typos ---"
@@ -213,6 +242,24 @@ if ! $GENERATE_ONLY && ! $NO_LINTS; then
         echo "⚠ mdbook is not installed — the documentation build is NOT covered locally."
         echo "⚠ Install: cargo install mdbook"
     fi
+
+    echo ""
+    echo "--- Lints: lockfile portability ---"
+    # Runs LAST of the lint gate, after everything above has invoked cargo: the
+    # gitignored [patch.crates-io] rewrites Cargo.lock on every invocation, so
+    # checking earlier would check a file that the next command breaks again.
+    python3 tools/check_lockfile_is_portable.py
+
+    echo ""
+    echo "--- Lints: generated territory ---"
+    # Unlike typos and mdbook this guard is committed here, so a missing file
+    # means the checkout is broken rather than a tool being uninstalled. Fail,
+    # do not warn.
+    if [ ! -f tools/check_generated_territory.py ]; then
+        echo "tools/check_generated_territory.py is missing from the checkout."
+        exit 1
+    fi
+    python3 tools/check_generated_territory.py
 fi
 
 echo ""
@@ -227,6 +274,20 @@ if ! $GENERATE_ONLY; then
     echo ""
     echo "--- Root: cargo test ---"
     cargo test --workspace
+
+    # The mocks arm is a second `#[cfg]`-selected implementation of every single
+    # and list model in crates/teksilo_ui, and a default build never compiles
+    # it. It is real alternate logic, not a compile target, so it is built,
+    # tested and linted: clippy only lints the arm actually compiled, so the
+    # pass above says nothing about this one. Scoped with `-p`; never combine
+    # `--features mocks` with `--workspace`.
+    echo ""
+    echo "--- Root: mocks arm (build, test, clippy) ---"
+    cargo build -p qleany --all-targets --features mocks
+    cargo test -p qleany --features mocks
+    # `--no-deps` keeps the lint pass on this crate only: the rest of the
+    # workspace is unaffected by the feature and was already linted above.
+    cargo clippy -p qleany --all-targets --features mocks -- -D warnings -A deprecated
 fi
 
 # -----------------------------------------------

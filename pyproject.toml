@@ -24,7 +24,7 @@ keywords = [
     "rust",
     "cpp",
     "qt",
-    "slint",
+    "teksilo",
     "vertical-slice",
 ]
 dynamic = [
@@ -50,7 +50,7 @@ Issues = "https://github.com/ferntech-eu/qleany/issues"
 bindings = "bin"
 
 # Path to the crate containing the binary (relative to pyproject.toml)
-manifest-path = "crates/slint_ui/Cargo.toml"
+manifest-path = "crates/teksilo_ui/Cargo.toml"
 
 # Strip symbols for smaller binary size
 strip = true

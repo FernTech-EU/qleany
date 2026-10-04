@@ -81,6 +81,19 @@ entities:
         entity: Tag
         relationship: one_to_many
         strong: true
+      # Weak lists pointing at a type owned by another field on this same entity.
+      - name: selected_tags
+        type: entity
+        entity: Tag
+        relationship: many_to_many
+        list_model: true
+        list_model_displayed_field: name
+      - name: featured_tags
+        type: entity
+        entity: Tag
+        relationship: one_to_many
+        list_model: true
+        list_model_displayed_field: name
       - name: team_members
         type: entity
         entity: TeamMember

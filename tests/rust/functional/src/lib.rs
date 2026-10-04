@@ -45,3 +45,6 @@ mod test_comment_controller;
 
 #[cfg(test)]
 mod test_feature_use_cases;
+
+#[cfg(test)]
+mod test_relationship_constraints;

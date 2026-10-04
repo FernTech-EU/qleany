@@ -288,6 +288,11 @@ pub const CRITICAL_RULES: &[Rule] = &[
         severity: "critical",
         description: "Entity names must not pluralize to the same generated collection name",
     },
+    Rule {
+        id: "C49",
+        severity: "critical",
+        description: "ManyToOne and ManyToMany relationships must be weak (strong must be false)",
+    },
 ];
 
 /// Warning rules – non-blocking issues worth reviewing.
@@ -311,6 +316,11 @@ pub const WARNING_RULES: &[Rule] = &[
         id: "W05",
         severity: "warning",
         description: "A rust_* UI flag is enabled but global.language is not 'rust'",
+    },
+    Rule {
+        id: "W06",
+        severity: "warning",
+        description: "Multiple strong owning fields on one parent type require explicit relationship selection; generated create uses one owning field",
     },
 ];
 
@@ -955,6 +965,19 @@ impl CheckUseCase {
                         ));
                     }
 
+                    if field.field_type == FieldType::Entity
+                        && field.strong
+                        && matches!(
+                            field.relationship,
+                            FieldRelationshipType::ManyToOne | FieldRelationshipType::ManyToMany
+                        )
+                    {
+                        critical_errors.push(format!(
+                            "Entity '{}', field '{}': {:?} must be weak (strong must be false)",
+                            entity.name, field.name, field.relationship
+                        ));
+                    }
+
                     // Weak OneToOne/ManyToOne must be optional (dangling pointer on delete)
                     let is_to_one = matches!(
                         field.relationship,
@@ -1103,8 +1126,22 @@ impl CheckUseCase {
             let mut strong_parents: HashMap<EntityId, HashMap<&str, Vec<&str>>> = HashMap::new();
 
             for rel in &relationships {
-                let left_entity_id = &rel.left_entity.expect("Relationship missing left_entity");
-                let right_entity_id = &rel.right_entity.expect("Relationship missing right_entity");
+                // Reported, not unwrapped. A relationship whose side is unset is
+                // exactly what deleting a referenced entity leaves behind, and the
+                // check is the one thing that has to survive a broken manifest: it
+                // is what tells the user the manifest is broken. The two arms below
+                // were already written to report a side that names a missing entity;
+                // panicking above them made that unreachable for the `None` case,
+                // and took the application down instead.
+                let (Some(left_entity_id), Some(right_entity_id)) =
+                    (rel.left_entity.as_ref(), rel.right_entity.as_ref())
+                else {
+                    critical_errors.push(format!(
+                        "Relationship '{}': both sides must name an entity",
+                        rel.field_name
+                    ));
+                    continue;
+                };
 
                 if !entity_by_id.contains_key(left_entity_id) {
                     critical_errors.push(format!(
@@ -1147,6 +1184,25 @@ impl CheckUseCase {
                 }
             }
 
+            // Multiple fields of the same parent type are also ambiguous:
+            // generated create(owner_id) has no relationship-field parameter.
+            for (child_id, parents) in &strong_parents {
+                for (parent, fields) in parents {
+                    let unique: HashSet<_> = fields.iter().collect();
+                    if unique.len() > 1 {
+                        warnings.push(format!(
+                            "Entity '{}': multiple strong owning fields on '{}': {}",
+                            entity_by_id
+                                .get(child_id)
+                                .map(|e| e.name.as_str())
+                                .unwrap_or("?"),
+                            parent,
+                            fields.join(", ")
+                        ));
+                    }
+                }
+            }
+
             // Check for entities with more than one strong parent entity type
             for (child_id, parent_types) in &strong_parents {
                 if parent_types.len() > 1 {
@@ -1174,12 +1230,18 @@ impl CheckUseCase {
                     if rel.field_name == "inherits_from" {
                         continue;
                     }
-                    if let Some(target) = entity_by_id
-                        .get(&rel.right_entity.expect("Relationship missing right_entity"))
+                    // A relationship with an unset side has already been reported
+                    // above. Skipping it here rather than unwrapping is what keeps
+                    // the check running to the end on a manifest that is broken,
+                    // which is the manifest the check exists for.
+                    let (Some(left_entity_id), Some(right_entity_id)) =
+                        (rel.left_entity.as_ref(), rel.right_entity.as_ref())
+                    else {
+                        continue;
+                    };
+                    if let Some(target) = entity_by_id.get(right_entity_id)
                         && target.only_for_heritage
                     {
-                        let left_entity_id =
-                            &rel.left_entity.expect("Relationship missing left_entity");
                         let source_name = entity_by_id
                             .get(left_entity_id)
                             .map(|e| e.name.as_str())
@@ -1198,10 +1260,13 @@ impl CheckUseCase {
             let mut strong_children: HashMap<EntityId, Vec<EntityId>> = HashMap::new();
             for rel in &relationships {
                 if rel.strength == Strength::Strong && rel.direction == Direction::Forward {
-                    let left_entity_id =
-                        &rel.left_entity.expect("Relationship missing left_entity");
-                    let right_entity_id =
-                        &rel.right_entity.expect("Relationship missing right_entity");
+                    // Same as above: already reported, so skipped rather than
+                    // unwrapped. A dangling side is not a cycle.
+                    let (Some(left_entity_id), Some(right_entity_id)) =
+                        (rel.left_entity.as_ref(), rel.right_entity.as_ref())
+                    else {
+                        continue;
+                    };
                     strong_children
                         .entry(*left_entity_id)
                         .or_default()

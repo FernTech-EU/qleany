@@ -76,7 +76,9 @@ mod imp {
     use frontend::commands::{ {{ ent.snake_name }}_commands, {{ target.snake_name }}_commands };
     use frontend::common::direct_access::{{ ent.snake_name }}::{{ ent.pascal_name }}RelationshipField;
     use frontend::common::event::{DirectAccessEntity, EntityEvent, Origin};
+    {%- if lf.inner.strong and target.owner_snake_name == ent.snake_name and target.owner_relationship_field_snake_name == lf.snake_name %}
     use frontend::direct_access::{ Create{{ target.pascal_name }}Dto, Update{{ target.pascal_name }}Dto };
+    {%- endif %}
 
     use crate::models::coalesced_reload::reload_on_events;
 
@@ -232,7 +234,7 @@ mod imp {
                 version.set(version.get().wrapping_add(1));
             }
         }
-        {%- if target.owner_snake_name == ent.snake_name %}
+        {%- if lf.inner.strong and target.owner_snake_name == ent.snake_name and target.owner_relationship_field_snake_name == lf.snake_name %}
 
         /// Create a `{{ target.pascal_name }}` under this owner. `index` of `-1` appends.
         ///
@@ -373,7 +375,9 @@ mod imp {
 
 #[cfg(feature = "mocks")]
 mod imp {
+    {%- if lf.inner.strong and target.owner_snake_name == ent.snake_name and target.owner_relationship_field_snake_name == lf.snake_name %}
     use std::cell::RefCell;
+    {%- endif %}
     use std::rc::Rc;
 
     use teksilo::data::ListModel;
@@ -381,7 +385,9 @@ mod imp {
 
     use frontend::AppContext;
     use frontend::EntityId;
+    {%- if lf.inner.strong and target.owner_snake_name == ent.snake_name and target.owner_relationship_field_snake_name == lf.snake_name %}
     use frontend::direct_access::Create{{ target.pascal_name }}Dto;
+    {%- endif %}
 
     use super::{{ ent.pascal_name }}{{ lf.pascal_name }}Row;
 
@@ -410,7 +416,9 @@ mod imp {
         model: ListModel<{{ ent.pascal_name }}{{ lf.pascal_name }}Row>,
         version: Signal<u64>,
         owner_id: Signal<Option<EntityId>>,
+        {%- if lf.inner.strong and target.owner_snake_name == ent.snake_name and target.owner_relationship_field_snake_name == lf.snake_name %}
         next_id: Rc<RefCell<EntityId>>,
+        {%- endif %}
     }
 
     #[allow(dead_code)] // identical surface to the real arm; some unused here
@@ -420,7 +428,9 @@ mod imp {
                 model: ListModel::from_vec(mock_rows()),
                 version: Signal::new(0),
                 owner_id,
+                {%- if lf.inner.strong and target.owner_snake_name == ent.snake_name and target.owner_relationship_field_snake_name == lf.snake_name %}
                 next_id: Rc::new(RefCell::new(100)),
+                {%- endif %}
             }
         }
 
@@ -463,7 +473,7 @@ mod imp {
         pub fn wire(&self, _ctx: &mut BuildContext) {}
 
         pub fn refresh(&self) {}
-        {%- if target.owner_snake_name == ent.snake_name %}
+        {%- if lf.inner.strong and target.owner_snake_name == ent.snake_name and target.owner_relationship_field_snake_name == lf.snake_name %}
 
         pub fn create(
             &self,

@@ -7,6 +7,7 @@
 #include <QCoro/QCoroSignal>
 #include <QCoro/QCoroTask>
 #include <QObject>
+#include <QPointer>
 #include <memory>
 
 using namespace Qt::StringLiterals;
@@ -82,7 +83,7 @@ template <typename T> QCoro::Task<T> UndoRedoSystem::executeQueryAsync(std::shar
     // Check if shutting down - block new queries
     if (m_isShuttingDown.load())
     {
-        qDebug() << "UndoRedoSystem: Rejecting new query during shutdown:" << query->description();
+        qDebug() << "UndoRedoSystem: Rejecting new query during shutdown";
         co_return T{};
     }
 
@@ -94,13 +95,17 @@ template <typename T> QCoro::Task<T> UndoRedoSystem::executeQueryAsync(std::shar
     // Increment active operations counter
     ++m_activeOperations;
     // Ensure we decrement the counter when done
-    auto decrementOnExit = qScopeGuard([this]() { --m_activeOperations; });
+    auto decrementOnExit = qScopeGuard([self = QPointer<UndoRedoSystem>(this)]() {
+        if (self)
+            --self->m_activeOperations;
+    });
 
     // Execute query asynchronously
     m_queryHandler->executeQuery(query);
 
     // Wait for query finished signal using QCoro
-    co_await qCoro(m_queryHandler.get(), &QueryHandler::queryFinished);
+    // Each coroutine must wait for its own query, not another concurrent query.
+    co_await qCoro(query.get(), &QueryBase::finished);
 
     // decrementOnExit will automatically decrement m_activeOperations
     co_return query->typedResult();

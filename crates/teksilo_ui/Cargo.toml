@@ -1,0 +1,93 @@
+[package]
+name = "qleany"
+description.workspace = true
+authors.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+version.workspace = true
+edition.workspace = true
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+readme = "README.md"
+
+# The library IS the application; the binary below is a one-line `fn main` that
+# calls `run()`. A `[[bin]]`-only crate cannot be depended on, which would put
+# every type here out of reach of the rest of the workspace, tests included.
+[lib]
+name = "teksilo_ui"
+path = "src/lib.rs"
+
+# The `qleany` command is this crate's from step 2 of the port. The name moved
+# with the CLI, so `qleany gen` keeps working and none of the call sites in
+# run_tests.sh or integration.yml had to move with it.
+[[bin]]
+name = "qleany"
+path = "src/main.rs"
+
+[features]
+# Render the UI with fabricated data and no backend. Every single and every list
+# model carries a `#[cfg(feature = "mocks")] mod imp` twin with an identical
+# public surface, so no `#[cfg]` leaks into consuming code. Building both arms is
+# not enough: this one is real alternate logic and clippy only lints the `#[cfg]`
+# arm it compiled, so build, test AND clippy it in CI. See the mocks section of
+# the Teksilo docs for the three commands.
+mocks = []
+
+[dependencies]
+# `{ workspace = true }` here, unlike the generated default: this workspace does
+# declare teksilo, and one declaration means one place to bump the version and
+# the feature list.
+teksilo = { workspace = true }
+
+# Backend
+frontend = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+# The CLI calls the backend controllers directly rather than through `frontend`,
+# which is one fewer indirection for a layer that has no reactivity to keep in
+# step. `common` comes with them for `OperationStatus` and the relationship-field
+# enums.
+common = { workspace = true }
+direct_access = { workspace = true }
+handling_manifest = { workspace = true }
+rust_file_generation = { workspace = true }
+cpp_qt_file_generation = { workspace = true }
+file_generation_shared_steps = { workspace = true }
+
+# The CLI surface itself, and the formats it reads and writes: `qleany show`
+# renders JSON and YAML, `qleany docs` renders Markdown to a terminal.
+clap = { version = "4.5", features = ["derive"] }
+serde_json = "1.0.149"
+serde_yml = "0.0.12"
+termimad = "0.34.1"
+
+# `qleany docs` serves the book out of the binary, so docs/ is compiled in. The
+# `docs` symlink beside this manifest is what makes that work inside a published
+# .crate, which contains nothing above its own package directory.
+include_dir = "0.7"
+
+log = "0.4"
+env_logger = "0.11"
+
+# The settings schema in `settings_keys.rs` carries a default and a validator per
+# key as `toml::Value`, which is what lets `--config` reject an unknown or
+# out-of-range key by name instead of ignoring it in silence.
+toml = "1.1"
+
+# Hand a documentation URL to the OS default handler. `that_detached` rather than
+# `that`: the latter waits on the browser it spawned, which on a cold Firefox start
+# would freeze the UI thread for seconds.
+open = "5.3"
+
+# Name validation. The same crate the Slint UI validates with, and the same rule:
+# a name is PascalCase when it is unchanged by being converted to PascalCase. That
+# keeps the UI's verdict identical to the generator's, which is what matters, since
+# the generator is what turns these names into type and file names.
+heck = "0.5"
+
+[lints]
+workspace = true

@@ -26,7 +26,7 @@ Or type `qleany` to launch the GUI and click on the green "Run demo" button.
 
 ## Intro
 
-Qt provides excellent widgets and signals, but little guidance on organizing a 30,000-line application. Rust's GUI ecosystem is growing fast, but there's nothing to help you structure what sits behind the UI. Qleany fills that gap. Write a YAML manifest describing your entities, relationships, and features. Qleany generates the rest: the database layer, the repository infrastructure, the event system, the controller wiring, and — if you need it — a multi-stack undo/redo system with cascade snapshot/restore for entity trees. For C++/Qt, it also generates reactive QML models that update themselves, and JavaScript mock controllers so your UI developer can work without waiting for the backend.
+Qt provides excellent widgets and signals, but little guidance on organizing a 30,000-line application. Rust's GUI ecosystem is growing fast, but there's nothing to help you structure what sits behind the UI. Qleany fills that gap. Write a YAML manifest describing your entities, relationships, and features. Qleany generates the rest: the database layer, the repository infrastructure, the event system, the controller wiring, and, if you need it, a multi-stack undo/redo system with cascade snapshot/restore for entity trees. For C++/Qt, it also generates reactive QML models that update themselves, and JavaScript mock controllers so your UI developer can work without waiting for the backend.
 
 Once the code is generated, your work is two things: fill in the use case bodies where the TODOs are, and build your UI. The rest is done. Think of it as getting the framework without adopting one.
 
@@ -34,7 +34,7 @@ Qleany is not a scaffolding tool, it's an architecture materializer.
 
 For a 17-entity project, that's roughly 410 files in C++/Qt or 175 in Rust, all compiling, all internally consistent, with a generated test suite that validates the infrastructure before you write a single line of business logic. The generated code is deliberately straightforward, readable and modifiable by a developer with a few years of experience, not a showcase of advanced language features.
 
-Qleany follows Package by Feature (Vertical Slice Architecture) principles. Define your entities and features once, generate consistent architecture across Rust and C++/Qt with baked-in (empty) UIs. Qleany's own Slint-based tool is built using the same patterns it generates.
+Qleany follows Package by Feature (Vertical Slice Architecture) principles. Define your entities and features once, generate consistent architecture across Rust and C++/Qt with baked-in (empty) UIs. Qleany's own tool is built using the same patterns it generates.
 
 ## Key Features
 
@@ -63,7 +63,7 @@ qleany prompt --list                 # list use cases (and which are unimplement
 qleany prompt --use-case feature:my_feature_name
 ```
 
-Not interested in LLMs? Ignore this section — `prompt` just prints text, and nothing else in Qleany depends on it.
+Not interested in LLMs? Ignore this section: `prompt` just prints text, and nothing else in Qleany depends on it.
 
 ## Documentation
 
@@ -96,7 +96,7 @@ New to Qleany? Start with the [Quick Start Guide - C++/Qt](docs/quick-start-cpp-
 
 **Data-centric applications** that will grow in complexity over time. Think document editors, project management tools, creative applications, or anything where users manipulate structured data and expect undo/redo to work reliably. This applies equally to desktop and mobile: a note-taking app on Plasma Mobile has the same architectural needs as one on desktop Linux.
 
-**Complex CLI tools in Rust**: tools like `git` that manage structured data, have multiple subcommands, and need consistent internal architecture. Qleany itself is built this way: type `qleany -h` to see a CLI interface backed by the same architecture that powers its Slint GUI.
+**Complex CLI tools in Rust**: tools like `git` that manage structured data, have multiple subcommands, and need consistent internal architecture. Qleany itself is built this way: type `qleany -h` to see a CLI interface backed by the same architecture that powers its GUI.
 
 **Applications targeting multiple platforms**: if you're building for desktop Linux and want to support Plasma Mobile or Ubuntu Touch with the same codebase, Qleany's generated backend works identically across all of them. Write your business logic once, swap UI frontends as needed.
 
@@ -165,8 +165,8 @@ The generated backend is platform-agnostic. Your business logic, repositories, a
 Also, the internal storage choice (SQLite for C++/Qt, in-memory HashMap store for Rust) is abstracted behind repositories. You can swap out the storage implementation if needed.
 
 **Rust frontend examples:**
-- **Teksilo UI**: the recommended Rust desktop target. Generates singles, list models, mocks and a demo window over the shared `frontend` crate — see [Quick Start Guide - Rust](docs/quick-start-rust.md)
-- **Slint UI**: [qleany/crates/slint_ui](https://github.com/ferntech-eu/qleany/tree/generator_in_rust/crates/slint_ui) (Qleany's current GUI frontend)
+- **Teksilo UI**: the recommended Rust desktop target, and the toolkit Qleany's own GUI is written in. Generates singles, list models, mocks and a demo window over the shared `frontend` crate. See [Quick Start Guide - Rust](docs/quick-start-rust.md)
+- **Slint UI**: [qleany/crates/slint_ui](https://github.com/ferntech-eu/qleany/tree/generator_in_rust/crates/slint_ui)
 - **Tauri/React**: [qleany/crates/qleany-app](https://github.com/ferntech-eu/qleany/tree/885c3ac6fdf6f115aed2c5a30fd26b81e331b4dd/crates/qleany-app) (abandoned prototypes but still working references)
 
 I'm no web developer, and Tauri/React is not my forte. But if you want to build a web-based frontend with Rust backend generated by Qleany, this is a starting point.
@@ -217,10 +217,16 @@ cargo build --release
 cargo run --release
 ```
 
-The Slint-based UI provides:
+The `qleany` binary carries both the GUI and the CLI. Running it with no
+subcommand opens the GUI. The previous Slint GUI is still in the repository and
+builds as `qleany-slint`.
+
+The UI provides:
 - Form-based manifest editing
 - Entity and relationship management
-- Feature/use case orchestration
+- Feature and use case orchestration
+- Undo and redo per screen
+- Light and dark themes
 - Selective file generation
 - Code preview and diff before generation
 

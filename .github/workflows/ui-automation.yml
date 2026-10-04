@@ -1,0 +1,152 @@
+name: UI Automation
+
+# Its own file rather than a job in ci.yml because GitHub Actions has no job-level
+# `paths:` filter: the only way to run these probes solely when the UI crate or the
+# probes themselves change is to put them behind a workflow-level filter. It is also
+# deliberately absent from ci.yml's `CI` summary job, so a flaky window or a slow
+# software GPU reddens this workflow alone and not every pull request.
+on:
+  pull_request:
+    paths:
+      - "crates/teksilo_ui/**"
+      - "scripts/automation_*.py"
+      - "scripts/teksilo_probe/**"
+      - "scripts/tests/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      # This file and the action it calls, following docs.yml's convention: a
+      # mistake in either would otherwise wait for the nightly run, on main,
+      # after it had already merged.
+      - ".github/workflows/ui-automation.yml"
+      - ".github/actions/install-linux-deps/**"
+  schedule:
+    - cron: "41 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  probes:
+    name: MCP probes
+    runs-on: ubuntu-latest
+    # The fixture builds the app itself on the first probe, and
+    # automation_generate.py and automation_demo.py each drive a long generation
+    # run, so a cold cache spends most of this budget before the first assertion.
+    timeout-minutes: 90
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Test the probe integration
+        run: python3 -m unittest discover -s scripts/tests -v
+
+      - name: Install system dependencies (Linux)
+        uses: ./.github/actions/install-linux-deps
+
+      # Unlike the compile-only jobs, a probe opens a real window. Xvfb gives it a
+      # display and `mesa-vulkan-drivers` gives it lavapipe, a CPU rasterizer that
+      # can present to an Xvfb surface. The runner has neither a GPU nor a Vulkan
+      # ICD, and its only OpenGL adapter cannot present there, so without these
+      # wgpu panics on window creation and the automation bridge never binds, which
+      # reads in the log as the bridge timing out rather than as a missing GPU.
+      #
+      # openbox is not optional either, and the reason is specific to this app.
+      # `create_title_bar_host` returns `Unsupported` on X11 with no EWMH window
+      # manager, so `tree.title_bar_host()` is `None` and `shell/window.rs` renders
+      # its fallback strip instead of the custom `TitleBar`. Under bare Xvfb the
+      # probes would quietly be driving a different UI, and the shell probe asserts
+      # on title-bar contents. x11-utils is for the two assertions below.
+      - name: Install X server, window manager and a software GPU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            openbox \
+            x11-utils \
+            mesa-vulkan-drivers
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ui-automation
+          # A first run that times out still warms the cache, so the retry succeeds
+          # instead of timing out identically.
+          cache-on-failure: true
+
+      # Match the protocol to the framework resolved by this checkout.
+      - name: Install the automation MCP server
+        run: |
+          version=$(python3 -c 'import tomllib; print(next(p["version"] for p in tomllib.load(open("Cargo.lock", "rb"))["package"] if p["name"] == "teksilo"))')
+          cargo install teksilo-automation-mcp --version "=$version" --locked
+
+      # No build step: `fixture.app_binary()` runs `cargo build -p qleany
+      # --bin qleany` every time, on purpose, so a probe always drives the
+      # real-backend debug binary whatever was compiled last.
+      #
+      # Every probe runs even after one fails. Stopping at the first would hide the
+      # other probes, and the usual case is that a shared assumption broke and half
+      # of them have something to say about it. Each probe prints a final
+      # harness report: 0 means passed, 1 means unable to run, and 2 means
+      # an observed behaviour was absent. Both nonzero outcomes fail this job.
+      - name: Run the MCP probes
+        env:
+          QLEANY_SHOT_DIR: ${{ runner.temp }}/shots
+        run: |
+          mkdir -p "$QLEANY_SHOT_DIR"
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1600x1200x24 &
+          for _ in $(seq 1 50); do xdpyinfo -display :99 >/dev/null 2>&1 && break; sleep 0.2; done
+          xdpyinfo -display :99 >/dev/null
+          openbox &
+          for _ in $(seq 1 50); do xprop -root _NET_SUPPORTING_WM_CHECK >/dev/null 2>&1 && break; sleep 0.2; done
+          # The bare read is the assertion, not the loop above it: a window manager
+          # that never came up must fail the job here rather than let every probe
+          # quietly assert against the undecorated fallback.
+          xprop -root _NET_SUPPORTING_WM_CHECK
+
+          failed=()
+          for probe in scripts/automation_*.py; do
+            # The shared harness, not a probe.
+            if [ "$probe" = "scripts/automation_fixture.py" ]; then
+              continue
+            fi
+            echo "::group::$probe"
+            # WAYLAND_DISPLAY empty so teksilo's window-system detection, which
+            # mirrors winit's precedence, resolves to the X11 server started above.
+            if WAYLAND_DISPLAY= python3 "$probe"; then
+              echo "::endgroup::"
+            else
+              echo "::endgroup::"
+              echo "::error file=$probe::$probe failed"
+              failed+=("$probe")
+            fi
+          done
+          if [ ${#failed[@]} -ne 0 ]; then
+            echo "${#failed[@]} probe(s) failed:"
+            printf '  %s\n' "${failed[@]}"
+            exit 1
+          fi
+          echo "all probes passed"
+
+      # The probes screenshot what they drove. On a failure that picture is usually
+      # the fastest way to see whether the UI was wrong or the assertion was.
+      - name: Upload probe screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: probe-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore

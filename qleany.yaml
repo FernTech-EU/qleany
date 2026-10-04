@@ -108,6 +108,7 @@ entities:
   - name: undoable
     type: boolean
   undoable: true
+  single_model: true
 - name: Field
   inherits_from: EntityBase
   fields:
@@ -158,6 +159,7 @@ entities:
     type: string
     is_list: true
   undoable: true
+  single_model: true
 - name: Feature
   inherits_from: EntityBase
   fields:
@@ -171,6 +173,7 @@ entities:
     list_model: true
     list_model_displayed_field: name
   undoable: true
+  single_model: true
 - name: File
   inherits_from: EntityBase
   fields:
@@ -235,7 +238,7 @@ entities:
   - name: entities
     type: entity
     entity: Entity
-    relationship: ordered_one_to_many
+    relationship: many_to_many
     list_model: true
     list_model_displayed_field: name
   - name: undoable
@@ -257,6 +260,7 @@ entities:
     optional: true
     strong: true
   undoable: true
+  single_model: true
 - name: Dto
   inherits_from: EntityBase
   fields:
@@ -270,6 +274,7 @@ entities:
     list_model: true
     list_model_displayed_field: name
   undoable: true
+  single_model: true
 - name: DtoField
   inherits_from: EntityBase
   fields:
@@ -298,6 +303,7 @@ entities:
     type: string
     is_list: true
   undoable: true
+  single_model: true
 - name: Global
   inherits_from: EntityBase
   fields:
@@ -312,6 +318,7 @@ entities:
   - name: prefix_path
     type: string
   undoable: true
+  single_model: true
 - name: Relationship
   inherits_from: EntityBase
   fields:
@@ -389,6 +396,7 @@ entities:
     type: boolean
     strong: true
   undoable: true
+  single_model: true
 features:
 - name: handling_app_lifecycle
   use_cases:
@@ -765,4 +773,5 @@ features:
 ui:
   rust_cli: true
   rust_slint: true
+  rust_teksilo: true
   cpp_qt_qtwidgets: true

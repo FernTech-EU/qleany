@@ -1,5 +1,5 @@
 [package]
-name = "qleany"
+name = "qleany-slint-ui"
 version.workspace = true
 edition.workspace = true
 homepage.workspace = true
@@ -8,10 +8,19 @@ license.workspace = true
 authors.workspace = true
 documentation.workspace = true
 readme = "README.md"
+publish = false
 description.workspace = true
 keywords.workspace = true
 categories.workspace = true
 build = "build.rs"
+
+
+# GUI only since step 2: the CLI and the `qleany` binary name went to
+# crates/teksilo_ui. The package is still called `qleany` until step 3, so this
+# has to be spelled out or cargo would infer the old name from the package.
+[[bin]]
+name = "qleany-slint"
+path = "src/main.rs"
 
 [dependencies]
 slint = { version = "1.15" }

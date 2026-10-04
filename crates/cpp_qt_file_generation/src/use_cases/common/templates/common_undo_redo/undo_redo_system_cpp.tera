@@ -98,6 +98,8 @@ void UndoRedoSystem::shutdown()
         qDebug() << "UndoRedoSystem: No active operations.";
     }
 
+    m_queryHandler->cancelAllQueries();
+
     // Step 3: Clear all undo/redo stacks
     if (m_manager)
     {
