@@ -3,8 +3,9 @@
 pub mod commands;
 pub mod nav;
 
+use teksilo::core::BindingLevel;
 use teksilo::prelude::*;
-use teksilo::widgets::{Expand, HStack, Switcher};
+use teksilo::widgets::{Banner, Expand, HStack, Switcher, VStack};
 
 use crate::app::commands::CommandDeps;
 use crate::app::nav::NavRail;
@@ -308,15 +309,51 @@ impl Widget for App {
             .child(UserInterfacePage::new(self.user_interface.clone()))
             .child(GeneratePage::new(self.generate.clone()));
 
+        let content = VStack::new()
+            .spacing(0.0)
+            .child(ManifestErrorBanner {
+                error: self.manifest.error(),
+                root_child: None,
+            })
+            .child(teksu!(Expand { child: pages }));
+
         let id = ctx.add(teksu!(
             HStack {
                 spacing: 0.0
                 child: rail
                 Expand {
-                    child: pages
+                    child: content
                 }
             }
         ));
+        self.root_child = Some(id);
+        vec![id]
+    }
+
+    fn layout_response(&self, proposal: SizeProposal, ctx: &LayoutContext) -> LayoutResponse {
+        self.root_child
+            .and_then(|id| ctx.child_size(id, proposal))
+            .map(LayoutResponse::from)
+            .unwrap_or_else(|| proposal.resolve(0.0, 0.0).into())
+    }
+}
+
+/// Rebuild only the status strip, preserving editor tabs and focus on save.
+#[derive(Debug)]
+struct ManifestErrorBanner {
+    error: Signal<Option<LocalizedString>>,
+    root_child: Option<WidgetId>,
+}
+
+impl Widget for ManifestErrorBanner {
+    fn build(&mut self, ctx: &mut BuildContext) -> Vec<WidgetId> {
+        self.error
+            .bind_to(ctx.self_id(), ctx.binding_registry(), BindingLevel::Rebuild);
+        let mut content = VStack::new().spacing(0.0);
+        if let Some(message) = self.error.get() {
+            content = content.child(Banner::error(message));
+        }
+        let id = ctx.add(content);
         self.root_child = Some(id);
         vec![id]
     }
