@@ -66,6 +66,17 @@ def main():
             "US-THEME-01 a theme toggle is in the title bar",
         )
 
+        toggle = tree.wait_for_node(session, label="Switch to dark theme", timeout=2)
+        if toggle is not None:
+            navigate.click(session, toggle)
+            checks.check(tree.wait_for_node(session, label="Switch to light theme", timeout=3) is not None,
+                         "US-THEME-01 activating the toggle selects dark theme")
+            toggle = tree.wait_for_node(session, label="Switch to light theme", timeout=2)
+            if toggle is not None:
+                navigate.click(session, toggle)
+                checks.check(tree.wait_for_node(session, label="Switch to dark theme", timeout=3) is not None,
+                             "US-THEME-01 activating again returns to light theme")
+
         # US-MENU-01: the hamburger opens a menu carrying the four top-level names.
         burger = tree.wait_for_node(session, label="Menu", timeout=3)
         if checks.check(burger is not None, "US-MENU-01 a hamburger is present"):

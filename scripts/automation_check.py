@@ -18,6 +18,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from ui_probe_helpers import click, select, save, read_manifest, named
 from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = ("US-CHK-01", "US-CHK-02", "US-CHK-03", "US-CHK-04", "US-CHK-05")
@@ -26,6 +27,7 @@ SHOT_DIR = os.environ.get("QLEANY_SHOT_DIR", tempfile.gettempdir())
 SETTLE = {"settle_timeout_ms": 3000}
 
 OK = "The manifest validates"
+WARNING = "The manifest has warnings"
 CRITICAL = "The manifest has errors and will not generate"
 
 
@@ -94,12 +96,12 @@ def main():
         time.sleep(0.4)
         session.settle(**SETTLE)
 
-        # US-CHK-01: Qleany's own manifest validates, so the badge says so.
+        # Qleany has two strong DTO owners on UseCase: rule W06 is a warning.
         mark = badge(session)
         checks.check(mark is not None, "US-CHK-01 the badge is on screen")
         checks.check(
-            mark is not None and mark.get("label") == OK,
-            f"US-CHK-01 a valid manifest reads as valid, got {mark and mark.get('label')!r}",
+            mark is not None and mark.get("label") == WARNING,
+            f"US-CHK-01 an ambiguous owner reads as a warning, got {mark and mark.get('label')!r}",
         )
 
         # US-CHK-05: and Generate is reachable.
@@ -117,8 +119,8 @@ def main():
         shown = texts(session)
         checks.check(opened, "US-CHK-02 the panel opens")
         checks.check(
-            "This manifest validates." in shown,
-            "US-CHK-02 and reports a clean manifest",
+            any("multiple strong owning fields" in t for t in shown),
+            "US-CHK-02 the panel identifies owning-relationship warning W06",
         )
         shot.save(session, os.path.join(SHOT_DIR, "qleany-check.png"))
 
@@ -136,6 +138,24 @@ def main():
             "Manifest validation" not in texts(session),
             "US-CHK-04 the panel closes",
         )
+
+        # Resolve W06 through the actual field editor, then verify the clean state.
+        fixture.go_to(session, "Entities")
+        select(session, "UseCase", (0, 430))
+        select(session, "dto_out", (430, 900))
+        field_name = tree.wait_for_node(session, role="TextInput", label="Name",
+                                        pred=lambda n: n.get("value") == "dto_out", timeout=5)
+        checks.check(field_name is not None, "DTO output relationship is selected")
+        click(session, "Strong (cascade delete)", "CheckBox")
+        save(session)
+        checks.check(not named(named(read_manifest(manifest)['entities'], 'UseCase')['fields'], 'dto_out').get('strong', False),
+                     "DTO output strong ownership is disabled in YAML")
+        mark = tree.wait_for_node(session, role="Button", label=OK, timeout=5)
+        checks.check(mark is not None, "resolving W06 clears the warning badge")
+        if mark is not None:
+            navigate.click(session, mark)
+            checks.check("This manifest validates." in texts(session), "resolved warning reports a clean manifest")
+            navigate.click(session, panel_close(session))
 
         # US-CHK-03 and 05: break a rule for real, and watch every consumer hear it.
         fixture.go_to(session, "Project", settle=False)
@@ -201,6 +221,11 @@ def main():
         session.settle(**SETTLE)
         navigate.click(session, tree.wait_for_node(session, label="Close current manifest", timeout=5), settle=False)
         session.settle(settle_timeout_ms=4000)
+        discard = tree.wait_for_node(session, label="Discard", role="Button", timeout=5)
+        if discard is not None:
+            navigate.click(session, discard)
+        checks.check(nav_row(session, "Entities").get("disabled", False),
+                     "closing after Discard unloads the manifest")
         checks.check(
             "Manifest validation" not in texts(session),
             "US-CHK-04 closing the manifest closes the panel",

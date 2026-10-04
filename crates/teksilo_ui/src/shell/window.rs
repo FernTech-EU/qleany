@@ -33,8 +33,8 @@ pub fn build_root(
     session: Session,
     ids: AppIds,
     unsaved: Signal<bool>,
+    manifest: ManifestViewModel,
 ) -> WidgetId {
-    let manifest = ManifestViewModel::new(session.app_ctx.clone(), ids.clone());
     // Validation is shell state, not a screen: the badge is in the title bar and
     // the navigation rail reads its verdict to decide whether Generate is reachable.
     let check = CheckViewModel::new(session.app_ctx.clone(), manifest.is_open());

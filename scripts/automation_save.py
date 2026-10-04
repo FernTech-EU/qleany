@@ -12,6 +12,7 @@ import time
 import automation_fixture as fixture
 import automation_entities as entities
 import automation_features as features
+from ui_probe_helpers import read_manifest
 from teksilo_probe import Report, launch_and_attach, navigate, tree
 
 PROBE = "save"
@@ -28,7 +29,7 @@ def save(session):
     session.settle()
 
 
-def edit_and_save(session, report, manifest, label, before, after, role="TextInput"):
+def edit_and_save(session, report, manifest, label, before, after, *, field_path, role="TextInput"):
     """Exercise an edit without submit/blur, then check the persisted YAML."""
     if not report.check(clean(session) is not None, f"{label}/{before}: starts clean"):
         return
@@ -46,7 +47,11 @@ def edit_and_save(session, report, manifest, label, before, after, role="TextInp
                                  pred=lambda n: not n.get("disabled"))
     report.check(enabled is not None, f"{label}/{before}: typing enables Save without Enter or blur")
     save(session)
-    report.check(after in Path(manifest).read_text(), f"{label}/{before}: Ctrl+S writes the pending value")
+    written = read_manifest(manifest)
+    for key in field_path:
+        written = written[key]
+    expected = [after] if field_path[-1] == "enum_values" else after
+    report.check(written == expected, f"{label}/{before}: Ctrl+S writes the exact YAML field")
     report.check(clean(session) is not None, f"{label}/{before}: saved buffer becomes clean")
 
 
@@ -62,28 +67,32 @@ def main():
         navigate.click(session, tree.wait_for_node(session, label="Open Qleany manifest", timeout=30))
         fixture.go_to(session, "Project")
         time.sleep(0.4)
+        project_paths = {"Application name": ("global", "application_name"),
+                         "Organisation name": ("global", "organisation", "name"),
+                         "Organisation domain": ("global", "organisation", "domain"),
+                         "Prefix path": ("global", "prefix_path")}
         for label, value in [("Application name", "PendingApp"),
                              ("Organisation name", "PendingOrg"),
                              ("Organisation domain", "eu.pending"),
                              ("Prefix path", "pending_crates")]:
             old = tree.find(session, role="TextInput", label=label)["value"]
-            edit_and_save(session, report, manifest, label, old, value)
+            edit_and_save(session, report, manifest, label, old, value, field_path=project_paths[label])
 
         fixture.go_to(session, "Entities")
         navigate.click(session, entities.rows(session)[0])
         old = tree.find(session, role="TextInput", label="Name")["value"]
-        edit_and_save(session, report, manifest, "Name", old, "PendingEntity")
+        edit_and_save(session, report, manifest, "Name", old, "PendingEntity", field_path=("entities", 0, "name"))
         navigate.click(session, entities.rows(session, entities.FIELD_COLUMN)[0])
         fields = tree.find_all(session, role="TextInput", label="Name")
         old = next(n["value"] for n in fields if n["value"] != "PendingEntity")
-        edit_and_save(session, report, manifest, "Name", old, "pending_field")
+        edit_and_save(session, report, manifest, "Name", old, "pending_field", field_path=("entities", 0, "fields", 0, "name"))
         report.check(entities.set_combo(session, "Type", "Enum"), "field can be changed to Enum")
         save(session)
         old = tree.find(session, role="TextInput", label="Enum name").get("value", "")
-        edit_and_save(session, report, manifest, "Enum name", old, "PendingEnum")
+        edit_and_save(session, report, manifest, "Enum name", old, "PendingEnum", field_path=("entities", 0, "fields", 0, "enum_name"))
 
         edit_and_save(session, report, manifest, None, "", "PendingVariant",
-                      role="MultilineTextInput")
+                      role="MultilineTextInput", field_path=("entities", 0, "fields", 0, "enum_values"))
         report.check(entities.set_combo(session, "Type", "Entity"), "field changes to Entity")
         report.check(entities.set_combo(session, "Referenced entity", "Global"), "reference selects Global")
         report.check(entities.set_combo(session, "Relationship type", "many_to_many"),
@@ -92,32 +101,39 @@ def main():
         save(session)
         field = tree.wait_for_node(session, role="TextInput", label="List model displayed field")
         edit_and_save(session, report, manifest, "List model displayed field", field.get("value", ""),
-                      "pending_display")
+                      "pending_display", field_path=("entities", 0, "fields", 0, "list_model_displayed_field"))
 
+        feature_index = next(i for i, f in enumerate(read_manifest(manifest)["features"]) if f["name"] == "handling_manifest")
+        base = ("features", feature_index)
+        use_case = base + ("use_cases", 0)
         fixture.go_to(session, "Features")
         features.click_row(session, "handling_manifest", features.FEATURE_COLUMN)
-        edit_and_save(session, report, manifest, "Name", "handling_manifest", "pending_feature")
+        edit_and_save(session, report, manifest, "Name", "handling_manifest", "pending_feature", field_path=base + ("name",))
         features.click_row(session, "load", features.USE_CASE_COLUMN)
-        edit_and_save(session, report, manifest, "Name", "load", "pending_use_case")
-        edit_and_save(session, report, manifest, "Name", "LoadDto", "PendingInputDto")
+        edit_and_save(session, report, manifest, "Name", "load", "pending_use_case", field_path=use_case + ("name",))
+        edit_and_save(session, report, manifest, "Name", "LoadDto", "PendingInputDto", field_path=use_case + ("dto_in", "name"))
         # Input DTO fields are in the detail pane, underneath the DTO name.
         row = tree.find(session, role="ListBoxOption", label="manifest_path")
         if row is None:
             raise RuntimeError("missing input DTO manifest_path field")
         navigate.click(session, row)
-        edit_and_save(session, report, manifest, "Name", "manifest_path", "pending_dto_field")
+        edit_and_save(session, report, manifest, "Name", "manifest_path", "pending_dto_field", field_path=use_case + ("dto_in", "fields", 0, "name"))
         report.check(entities.set_combo(session, "Type", "Enum"), "DTO field can be changed to Enum")
         save(session)
         old = tree.find(session, role="TextInput", label="Enum name").get("value", "")
-        edit_and_save(session, report, manifest, "Enum name", old, "PendingDtoEnum")
+        edit_and_save(session, report, manifest, "Enum name", old, "PendingDtoEnum", field_path=use_case + ("dto_in", "fields", 0, "enum_name"))
         edit_and_save(session, report, manifest, None, "", "PendingDtoVariant",
-                      role="MultilineTextInput")
+                      role="MultilineTextInput", field_path=use_case + ("dto_in", "fields", 0, "enum_values"))
         navigate.click(session, tree.wait_for_node(session, label="Output DTO"))
         old = next(n["value"] for n in tree.find_all(session, role="TextInput", label="Name") if n.get("value", "").endswith("Dto"))
-        edit_and_save(session, report, manifest, "Name", old, "PendingOutputDto")
-        row = tree.find(session, role="ListBoxOption", label="workspace_id")
+        edit_and_save(session, report, manifest, "Name", old, "PendingOutputDto", field_path=use_case + ("dto_out", "name"))
+        row = tree.wait_for_node(session, role="ListBoxOption", label="workspace_id", timeout=5)
+        if row is None:
+            raise AssertionError("saving an output DTO must preserve its tab and fields")
         navigate.click(session, row)
-        edit_and_save(session, report, manifest, "Name", "workspace_id", "pending_output_field")
+        edit_and_save(session, report, manifest, "Name", "workspace_id", "pending_output_field", field_path=use_case + ("dto_out", "fields", 0, "name"))
+    except AssertionError as exc:
+        report.check(False, str(exc))
     except Exception as exc:
         report.error(f"{type(exc).__name__}: {exc}")
     finally:

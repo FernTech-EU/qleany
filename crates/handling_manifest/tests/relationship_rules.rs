@@ -154,3 +154,68 @@ fn missing_target_on_save_returns_error_and_preserves_file() {
     );
     assert_eq!(std::fs::read(&f.path).unwrap(), before);
 }
+
+#[test]
+fn ownership_validation_tracks_field_edits_without_reloading() {
+    let f = Fixture::new(|m| {
+        let fs = fields(m, "Workspace");
+        let mut duplicate = fs
+            .iter()
+            .find(|f| f["name"].as_str() == Some("tags"))
+            .unwrap()
+            .clone();
+        duplicate["name"] = Value::String("other_tags".into());
+        fs.push(duplicate);
+    });
+    let has_ambiguity = || {
+        controller::check(&f.db, &f.hub)
+            .unwrap()
+            .warnings
+            .iter()
+            .any(|message| message.contains("multiple strong owning fields"))
+    };
+    assert!(has_ambiguity());
+    for (strong, expected_warning) in [(false, false), (true, true)] {
+        let mut tx = Transaction::begin_write_transaction(&f.db).unwrap();
+        let mut repo = repository_factory::write::create_field_repository(&tx).unwrap();
+        let mut field = repo
+            .get_all()
+            .unwrap()
+            .into_iter()
+            .find(|f| f.name == "other_tags")
+            .unwrap();
+        field.strong = strong;
+        repo.update_with_relationships(&mut EventBuffer::new(), &field)
+            .unwrap();
+        drop(repo);
+        tx.commit().unwrap();
+        assert_eq!(has_ambiguity(), expected_warning);
+    }
+    // A new graph edge must also participate even though no Relationship row was
+    // created for it by load. Point the owner's field at itself to create a cycle.
+    let mut tx = Transaction::begin_write_transaction(&f.db).unwrap();
+    let entities = repository_factory::write::create_entity_repository(&tx)
+        .unwrap()
+        .get_all()
+        .unwrap();
+    let workspace_id = entities.iter().find(|e| e.name == "Workspace").unwrap().id;
+    let mut repo = repository_factory::write::create_field_repository(&tx).unwrap();
+    let mut field = repo
+        .get_all()
+        .unwrap()
+        .into_iter()
+        .find(|f| f.name == "other_tags")
+        .unwrap();
+    field.entity = Some(workspace_id);
+    repo.update_with_relationships(&mut EventBuffer::new(), &field)
+        .unwrap();
+    drop(repo);
+    tx.commit().unwrap();
+    assert!(
+        controller::check(&f.db, &f.hub)
+            .unwrap()
+            .critical_errors
+            .iter()
+            .any(|message| message.contains("Cyclic strong dependency"))
+    );
+}

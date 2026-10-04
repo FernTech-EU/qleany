@@ -43,6 +43,17 @@ pub fn with_unsaved_settled(
         .present(ctx);
 }
 
+/// Present the shared quit confirmation directly, including from window callbacks.
+pub fn confirm_quit(vm: &ManifestViewModel, ctx: &mut EventContext) {
+    with_unsaved_settled(
+        vm,
+        ctx,
+        tr!(quit_unsaved_title()),
+        tr!(quit_unsaved_message()),
+        |ctx| ctx.close_window_forced(),
+    );
+}
+
 fn may_proceed(vm: &ManifestViewModel, choice: StandardButton) -> bool {
     match choice {
         StandardButton::Save => vm.try_save().is_ok(),

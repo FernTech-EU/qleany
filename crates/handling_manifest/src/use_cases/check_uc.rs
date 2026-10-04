@@ -1114,14 +1114,20 @@ impl CheckUseCase {
 
         // ── Relationships ──
 
-        let all_relationship_ids: Vec<EntityId> = entities
+        // Relationship rows are a load-time projection. Editing fields does not
+        // refresh those rows, so validation must derive the current graph instead
+        // of reporting obsolete ownership, targets, or cycles until the next open.
+        let entity_fields: Vec<Field> = fields
             .iter()
-            .flat_map(|e| e.relationships.clone())
+            .filter(|field| field.field_type == FieldType::Entity)
+            .cloned()
             .collect();
-        if !all_relationship_ids.is_empty() {
-            let relationships = uow.get_relationship_multi(&all_relationship_ids)?;
-            let relationships: Vec<Relationship> = relationships.into_iter().flatten().collect();
-
+        let relationships: Vec<Relationship> =
+            super::load_uc::tools::generate_relationships(&entities, &entity_fields)
+                .into_values()
+                .flatten()
+                .collect();
+        if !relationships.is_empty() {
             // Track distinct strong parent entity types per child entity
             let mut strong_parents: HashMap<EntityId, HashMap<&str, Vec<&str>>> = HashMap::new();
 

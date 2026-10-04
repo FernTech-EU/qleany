@@ -12,6 +12,8 @@ on:
       - "scripts/automation_*.py"
       - "scripts/teksilo_probe/**"
       - "scripts/tests/**"
+      - "scripts/ui_probe_helpers.py"
+      - "scripts/requirements-automation.txt"
       - "Cargo.toml"
       - "Cargo.lock"
       # This file and the action it calls, following docs.yml's convention: a
@@ -45,6 +47,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+
+      - name: Install probe dependencies
+        run: python3 -m pip install -r scripts/requirements-automation.txt
 
       - name: Test the probe integration
         run: python3 -m unittest discover -s scripts/tests -v

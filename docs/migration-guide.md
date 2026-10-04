@@ -69,6 +69,10 @@ Run `qleany check` before regeneration:
   explicitly attach it to the desired field. Existing manifests using this
   pattern remain supported.
 
+The editor now validates ownership and cycles against the current field values.
+Changing a relationship target or strength updates these diagnostics without
+closing and reopening the manifest.
+
 Previously generated Rust stores could contain duplicate links or a child under
 multiple one-to-many sources. Audit application persistence/imports, choose the
 correct owner and remove duplicate links before loading them through the stricter

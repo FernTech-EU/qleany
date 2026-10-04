@@ -147,6 +147,13 @@ def main():
             f"US-WIZ-04 the four templates are offered, got {templates}",
         )
 
+        navigate.click(session, button(session, "Back"))
+        checks.check(any(n.get("value") == "ProbedApp" for n in roles(session, "TextInput")),
+                     "Back preserves the application name")
+        checks.check(any(n.get("value") == "FernTech" for n in roles(session, "TextInput")),
+                     "Back preserves the organisation name")
+        navigate.click(session, button(session, "Next"))
+
         # US-WIZ-05: the frontends of the chosen language, and Create instead of Next.
         navigate.click(session, button(session, "Next"), settle=False)
         session.settle(**SETTLE)

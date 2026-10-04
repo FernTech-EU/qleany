@@ -142,6 +142,8 @@ pub fn run_with(app_ctx: Rc<AppContext>) {
         // cannot serve.
         .auto_detect_os_locale(false);
 
+    let manifest = crate::manifest::ManifestViewModel::new(app_ctx.clone(), ids.clone());
+    let guard_manifest = manifest.clone();
     let root_session = session.clone();
     let root_ids = ids.clone();
     // Whether there is work that is not on disk. Written by `App`, read by the
@@ -173,14 +175,13 @@ pub fn run_with(app_ctx: Rc<AppContext>) {
                 .min_size(960, 640)
                 .decorations(DecorationsMode::CustomChrome)
                 // The window's own close button goes through the same question the
-                // Quit menu row asks. The guard vetoes and fires the intent; the
-                // action's answer calls `close_window_forced`, which bypasses this
-                // rather than re-triggering it.
+                // Quit menu row asks. Present directly: a window callback has no
+                // input dispatch to drain an intent on Teksilo 0.14.3.
                 .on_close_requested(move |ctx| {
                     if !guard_unsaved.get() {
                         return CloseResponse::Close;
                     }
-                    ctx.send_intent(crate::intents::AppIntent::Quit.into_intent());
+                    crate::manifest::guard::confirm_quit(&guard_manifest, ctx);
                     CloseResponse::Veto
                 })
                 .root(move |tree, _state| {
@@ -189,6 +190,7 @@ pub fn run_with(app_ctx: Rc<AppContext>) {
                         root_session.clone(),
                         root_ids.clone(),
                         unsaved.clone(),
+                        manifest.clone(),
                     )
                 }),
         )

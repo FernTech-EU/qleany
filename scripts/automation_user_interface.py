@@ -16,6 +16,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import automation_fixture as fixture
+from ui_probe_helpers import read_manifest, save as save_exact
 from teksilo_probe import Report, launch_and_attach, navigate, shot, tree
 
 STORIES = ("US-UIT-01",)
@@ -105,10 +106,19 @@ def main():
 
         shot.save(session, os.path.join(SHOT_DIR, "qleany-user-interface.png"))
 
+        for label, key in zip(RUST_TARGETS, ("rust_cli", "rust_teksilo", "rust_slint", "rust_ios", "rust_android")):
+            for _ in range(2):
+                node = checkboxes(session)[label]
+                expected = node.get("toggled") != "true"
+                navigate.click(session, node)
+                save_exact(session)
+                checks.check(read_manifest(manifest).get("ui", {}).get(key, False) == expected,
+                             f"{label}: toggled value {expected} persists in its exact YAML field")
+
         # A flag can be turned off, and it stays off across a visit to another
         # screen: this is the whole write path, through a single that has to be
         # re-pointed when the screen is rebuilt.
-        navigate.click(session, boxes["Slint"], settle=False)
+        navigate.click(session, checkboxes(session)["Slint"], settle=False)
         session.settle(**SETTLE)
         go_to(session, "Home")
         go_to(session, "User Interface")
@@ -168,6 +178,14 @@ def main():
             "rust_slint" not in block,
             f"US-UIT-01 and one turned off reaches it too, block is {block!r}",
         )
+        for label, key in zip(CPP_TARGETS, ("cpp_qt_qtwidgets", "cpp_qt_qtquick")):
+            for _ in range(2):
+                node = checkboxes(session)[label]
+                expected = node.get("toggled") != "true"
+                navigate.click(session, node)
+                save_exact(session)
+                checks.check(read_manifest(manifest).get("ui", {}).get(key, False) == expected,
+                             f"{label}: toggled value {expected} persists in its exact YAML field")
     except Exception as exc:
         checks.error(f"{type(exc).__name__}: {exc}")
     finally:

@@ -219,6 +219,21 @@ def main():
             "US-GEN-04 the text filter matches the path",
         )
 
+        # Toggle real filters, rather than only inspecting their defaults.
+        for label in ("Modified", "New"):
+            navigate.click(session, checkbox(session, label))
+        checks.check(not files(session), "disabling every status empties the file list")
+        for label in ("Modified", "New", "Unchanged"):
+            navigate.click(session, checkbox(session, label))
+        checks.check(bool(files(session)), "reenabling statuses restores matching files")
+        for label in ("Infra", "Aggregate", "Scaffold"):
+            navigate.click(session, checkbox(session, label))
+        checks.check(not files(session), "disabling every nature empties the file list")
+        for label in ("Infra", "Aggregate", "Scaffold"):
+            navigate.click(session, checkbox(session, label))
+        matched = files(session)
+        checks.check(bool(matched), "reenabling natures restores matching files")
+
         # US-GEN-05 and US-GEN-06: wholesale selection, and the count on the button.
         node, count = generate_button(session)
         checks.check(count == 0, f"US-GEN-06 nothing is ticked yet, got {count}")
@@ -238,6 +253,15 @@ def main():
             node is not None and not node.get("disabled", False),
             "US-GEN-06 and the button is live",
         )
+
+        navigate.click(session, buttons(session)["Unselect all"])
+        checks.check(generate_button(session)[1] == 0, "Unselect all clears the count")
+        row = files(session)[0]
+        # The row's checkbox is a descendant with its own semantic click action.
+        tick = next(n for n in tree.descendants(session, row) if n.get("role") == "CheckBox")
+        navigate.click(session, tick)
+        checks.check(generate_button(session)[1] == 1, "one file checkbox selects exactly one file")
+        navigate.click(session, buttons(session)["Select all"])
 
         # US-GEN-07: the preview, both ways. The list is re-read first: ticking
         # every row rebuilt it, and a node id is only valid for the instance it
@@ -281,6 +305,34 @@ def main():
             not os.path.isdir(os.path.join(workdir, "crates")),
             "US-GEN-09 and not into the project root",
         )
+        # The project destination is also an isolated fixture directory.
+        navigate.click(session, checkbox(session, "In temp/"))
+        navigate.click(session, generate_button(session)[0], settle=False)
+        deadline = time.time() + PIPELINE_TIMEOUT
+        while time.time() < deadline and not os.path.isfile(os.path.join(workdir, "Cargo.toml")):
+            session.settle(**SETTLE)
+            time.sleep(0.1)
+        checks.check(os.path.isfile(os.path.join(workdir, "Cargo.toml")),
+                     "disabling In temp writes into the fixture project")
+        deadline = time.time() + PIPELINE_TIMEOUT
+        while time.time() < deadline:
+            session.settle(**SETTLE)
+            if "Cancel" not in buttons(session) and "Recompute" in buttons(session) and not buttons(session)["Recompute"].get("disabled", False):
+                break
+            time.sleep(0.1)
+        navigate.click(session, tree.wait_for_node(session, label="Recompute", role="Button",
+                                                  pred=lambda n: not n.get("disabled"), timeout=5), settle=False)
+        cancel = tree.wait_for_node(session, label="Cancel", role="Button", timeout=5)
+        checks.check(cancel is not None, "Refresh exposes a running operation that can be cancelled")
+        if cancel is not None:
+            navigate.click(session, cancel, settle=False)
+            deadline = time.time() + 15
+            while time.time() < deadline and "Cancel" in buttons(session):
+                session.settle(**SETTLE)
+                time.sleep(0.1)
+            checks.check("Cancel" not in buttons(session), "Cancel returns to idle")
+            checks.check("Recompute" in buttons(session) and not buttons(session)["Recompute"].get("disabled"),
+                         "cancelled generation can be refreshed again")
         shot.save(session, os.path.join(SHOT_DIR, "qleany-generate-done.png"))
     except Exception as exc:
         checks.error(f"{type(exc).__name__}: {exc}")

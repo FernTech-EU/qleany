@@ -56,13 +56,7 @@ fn register_help(ctx: &mut BuildContext, deps: &CommandDeps) {
     // opened this dialog rather than re-triggering it.
     let vm = deps.manifest.clone();
     ctx.register_action_global(Action::new(name::QUIT).on_invoke(move |_i, c| {
-        with_unsaved_settled(
-            &vm,
-            c,
-            tr!(quit_unsaved_title()),
-            tr!(quit_unsaved_message()),
-            |ctx| ctx.close_window_forced(),
-        );
+        crate::manifest::guard::confirm_quit(&vm, c);
     }));
 }
 

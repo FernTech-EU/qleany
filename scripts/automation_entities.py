@@ -7,10 +7,8 @@ rules out), US-ENT-06 (the parent combo), US-FLD-01 (add a field and its
 subtitle), US-FLD-04/05/06/09 (the field form adapts to the type and the
 relationship) and US-ENT-09 (the Mermaid export).
 
-The reorder and undo stories are not here: a drag is driven through the data
-view's own protocol rather than through an accessibility action, and undo has no
-UI yet. Both are pinned by unit tests in the meantime, and this file is where
-they belong once they have one.
+Pointer reordering and undo/redo are covered by automation_collections.py and
+automation_undo.py.
 """
 
 import os

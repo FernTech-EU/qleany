@@ -128,6 +128,46 @@ cargo install teksilo-automation-mcp --locked
 The first formats `teksu!` macro bodies, which `cargo fmt` leaves alone. The
 second is what `scripts/automation_*.py` attach to.
 
+## UI automation
+
+Use a Python virtual environment and install the probe dependencies:
+
+```bash
+python3 -m venv /tmp/qleany-probes
+. /tmp/qleany-probes/bin/activate
+python3 -m pip install -r scripts/requirements-automation.txt
+python3 -m unittest discover -s scripts/tests -v
+python3 scripts/automation_guards.py
+```
+
+The live probes use the Teksilo-provided `scripts/teksilo_probe` harness. Refresh
+that generated directory with `cargo teksilo init`; do not edit it by hand.
+`TEKSILO_MCP_BIN` selects a version-matched `teksilo-automation-mcp` executable.
+A working desktop display is required (CI uses Xvfb and Openbox). Run probes
+sequentially. Each probe builds the application, uses an isolated configuration
+and temporary manifest, and returns 0 for success, 1 for execution errors, or 2
+for failed behavior assertions. CI runs every `automation_*.py` except the
+shared `automation_fixture.py`.
+
+Coverage beyond screen smoke tests includes:
+
+| Probe | Interactions and assertions |
+| --- | --- |
+| `automation_guards.py` | Save before New/Open/Close; failed-save preservation and recovery; title-bar Quit Save/Discard/Cancel |
+| `automation_collections.py` | Pointer drag on entities, fields, features, use cases and DTO fields; undo/redo and exact saved order; row overflow deletion, cascade cancellation, DTO disable and subtree restoration |
+| `automation_check.py` | W06 ownership warning, resolution through a field edit, critical errors and generation gating |
+| `automation_options.py` | Inheritance, entity flags, relationship variants and flags, use-case flags and associations, DTO field flags; exact YAML persistence |
+| `automation_save.py` | Unsubmitted text enables Save and persists into the exact YAML field across the editors |
+| `automation_generate.py` | Status/nature filters, individual and bulk selection, temporary/project destinations, recompute cancellation |
+| `automation_user_interface.py` | Every Rust and C++ UI target toggle persists into its exact YAML flag |
+| `automation_shell.py`, `automation_wizard.py` | Theme switching and wizard Back retaining values, in addition to existing shell/wizard checks |
+
+This is interaction coverage, not exhaustive UI coverage. Native Open, Save As
+and creation-folder pickers require OS-dialog automation outside the in-process
+Teksilo harness. External browser/folder launches, visual layout across window
+sizes, complete keyboard traversal, and generation error/retry paths still need
+separate coverage. Developer manifest-open shortcuts do not cover native pickers.
+
 ## Developer Certificate of Origin
 
 This project uses the [Developer Certificate of Origin (DCO)](DCO.md).
