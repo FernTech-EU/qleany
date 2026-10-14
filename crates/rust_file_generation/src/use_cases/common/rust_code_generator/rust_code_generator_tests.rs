@@ -1555,7 +1555,11 @@ fn hashmap_store_indexes_exclusive_junctions_and_validates_without_walking_them(
         "hashmap_store",
         None,
     ));
-    let code = super::generate_code_with_snapshot(&snap).expect("render hashmap_store");
+    // Templates check out with CRLF on Windows, so line endings are normalised before
+    // any assertion spells a newline.
+    let code = super::generate_code_with_snapshot(&snap)
+        .expect("render hashmap_store")
+        .replace("\r\n", "\n");
 
     // Exclusivity is fixed per junction at construction.
     for (junction, kind) in [
@@ -1617,7 +1621,11 @@ fn entity_table_checks_ownership_through_the_junction_index() {
         "common_entity_table",
         Some(1),
     ));
-    let code = super::generate_code_with_snapshot(&snap).expect("render common_entity_table");
+    // Templates check out with CRLF on Windows, so line endings are normalised before
+    // any assertion spells a newline.
+    let code = super::generate_code_with_snapshot(&snap)
+        .expect("render common_entity_table")
+        .replace("\r\n", "\n");
 
     assert!(!code.contains("use im::HashMap;"));
     assert_eq!(code.matches("-> &RwLock<HashMapJunction> {").count(), 2);

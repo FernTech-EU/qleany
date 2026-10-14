@@ -17,13 +17,14 @@ impl Fixture {
         let mut manifest: Value =
             serde_yml::from_str(include_str!("../../../examples/rust/full/qleany.yaml")).unwrap();
         edit(&mut manifest);
+        // The tests of this file run in parallel threads of one process, so the path
+        // takes a counter: a timestamp alone can repeat on a coarse clock, and two
+        // fixtures sharing a file load each other's manifest.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
             "qleany-rules-{}-{}.yaml",
             std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         std::fs::write(&path, serde_yml::to_string(&manifest).unwrap()).unwrap();
         let db = DbContext::new().unwrap();
