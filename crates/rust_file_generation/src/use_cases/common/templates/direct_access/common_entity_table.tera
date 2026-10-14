@@ -22,19 +22,19 @@
     the condition. -#}
 {%- if s.entities[e].backward_relationships | length > 0 %}
 use crate::database::hashmap_store::{
-    HashMapStore, delete_from_backward_junction, junction_get, junction_remove, junction_set,
-    read_or_recover, write_or_recover,
+    HashMapJunction, HashMapStore, delete_from_backward_junction, junction_get, junction_remove,
+    junction_set, read_or_recover, write_or_recover,
 };
 {%- else %}
 use crate::database::hashmap_store::{
-    HashMapStore, junction_get, junction_remove, junction_set, read_or_recover, write_or_recover,
+    HashMapJunction, HashMapStore, junction_get, junction_remove, junction_set, read_or_recover,
+    write_or_recover,
 };
 {%- endif %}
 use crate::entities::{{ s.entities[e].pascal_name }};
 use crate::error::RepositoryError;
 use crate::types::EntityId;
 use crate::{impl_relationship_methods, impl_write_relationship_methods};
-use im::HashMap;
 use std::sync::RwLock;
 
 use super::{{ s.entities[e].snake_name }}_repository::{{ s.entities[e].pascal_name }}RelationshipField;
@@ -53,7 +53,7 @@ impl<'a> {{ s.entities[e].pascal_name }}HashMapTable<'a> {
     fn resolve_junction(
         &self,
         field: &{{ s.entities[e].pascal_name }}RelationshipField,
-    ) -> &RwLock<HashMap<EntityId, Vec<EntityId>>> {
+    ) -> &RwLock<HashMapJunction> {
         match field {
             {% for rid, r in s.entities[e].forward_relationships %}
             {{ s.entities[e].pascal_name }}RelationshipField::{{ r.field_pascal_name }} => &self.store.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ r.field_snake_name }},
@@ -73,26 +73,40 @@ impl<'a> {{ s.entities[e].pascal_name }}HashMapTable<'a> {
         }
     }
 
+    /// Validate a batch of row replacements for one relationship before any is
+    /// written. Costs O(targets in `rows`): exclusivity is checked against the
+    /// junction's reverse index, never by walking the relationship's other rows.
     fn validate_relationship_updates(
         &self,
         field: &{{ s.entities[e].pascal_name }}RelationshipField,
         rows: &[(EntityId, Vec<EntityId>)],
         _creating_ids: &[EntityId],
     ) -> Result<(), RepositoryError> {
-        let (exclusive, scalar) = match field {
+        let scalar = match field {
             {% for rid, r in s.entities[e].forward_relationships %}
             {{ s.entities[e].pascal_name }}RelationshipField::{{ r.field_pascal_name }} => {
                 let targets = read_or_recover(&self.store.{{ s.entities[r.inner.right_entity].snake_name | pluralize }});
+                {%- if r.inner.right_entity == e %}
+                let mut missing: Vec<_> = rows.iter().flat_map(|(_, ids)| ids).copied()
+                    .filter(|id| !targets.contains_key(id)).collect();
+                if !missing.is_empty() {
+                    // Self-referential: a row of this very batch may point at
+                    // another row being created alongside it.
+                    let creating: std::collections::HashSet<EntityId> = _creating_ids.iter().copied().collect();
+                    missing.retain(|id| !creating.contains(id));
+                }
+                {%- else %}
                 let missing: Vec<_> = rows.iter().flat_map(|(_, ids)| ids).copied()
-                    .filter(|id| !targets.contains_key(id){% if r.inner.right_entity == e %} && !_creating_ids.contains(id){% endif %}).collect();
+                    .filter(|id| !targets.contains_key(id)).collect();
+                {%- endif %}
                 if !missing.is_empty() {
                     return Err(RepositoryError::MissingRelationshipTarget { operation: "relationship update", ids: missing });
                 }
-                ({{ r.inner.relationship_type == "OneToOne" or r.inner.relationship_type == "OneToMany" or r.inner.relationship_type == "OrderedOneToMany" }}, {{ r.inner.relationship_type == "OneToOne" or r.inner.relationship_type == "ManyToOne" }})
+                {{ r.inner.relationship_type == "OneToOne" or r.inner.relationship_type == "ManyToOne" }}
             }
             {%- endfor %}
         };
-        crate::database::hashmap_store::validate_junction_updates(self.resolve_junction(field), rows, exclusive, scalar)
+        crate::database::hashmap_store::validate_junction_updates(self.resolve_junction(field), rows, scalar)
     }
 
     fn hydrate(&self, entity: &mut {{ s.entities[e].pascal_name }}) {
@@ -173,24 +187,22 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
             {% for f in s.entities[e].fields %}
             {%- if f.inner.field_type == "Entity" and f.relationship == "OneToOne" %}
             // one-to-one constraint check: ensure {{ f.snake_name }} is not already referenced by another {{ s.entities[e].snake_name }}
+            // (the junction's reverse index answers in one lookup, never by walking its rows)
             {
                 let jn = read_or_recover(&self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }});
-                for (&existing_id, right_ids) in jn.iter() {
-                    {%- if f.optional %}
-                    // A let-chain rather than nested `if`s: edition 2024 has them, and
-                    // clippy::collapsible_if flags the nested form.
-                    if let Some(ref right_id) = new_entity.{{ f.snake_name }}
-                        && existing_id != new_entity.id
-                        && right_ids.contains(right_id)
-                    {
-                        return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
-                    }
-                    {%- else %}
-                    if existing_id != new_entity.id && right_ids.contains(&new_entity.{{ f.snake_name }}) {
-                        return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", new_entity.{{ f.snake_name }}, existing_id)));
-                    }
-                    {%- endif %}
+                {%- if f.optional %}
+                // A let-chain rather than nested `if`s: edition 2024 has them, and
+                // clippy::collapsible_if flags the nested form.
+                if let Some(ref right_id) = new_entity.{{ f.snake_name }}
+                    && let Some(existing_id) = jn.sources_of(right_id).into_iter().find(|source| *source != new_entity.id)
+                {
+                    return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
                 }
+                {%- else %}
+                if let Some(existing_id) = jn.sources_of(&new_entity.{{ f.snake_name }}).into_iter().find(|source| *source != new_entity.id) {
+                    return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", new_entity.{{ f.snake_name }}, existing_id)));
+                }
+                {%- endif %}
             }
             {%- endif %}
             {%- endfor %}
@@ -306,24 +318,22 @@ impl<'a> {{ s.entities[e].pascal_name }}Table for {{ s.entities[e].pascal_name }
             {% for f in s.entities[e].fields %}
             {%- if f.inner.field_type == "Entity" and f.relationship == "OneToOne" %}
             // one-to-one constraint check: ensure {{ f.snake_name }} is not already referenced by another {{ s.entities[e].snake_name }}
+            // (the junction's reverse index answers in one lookup, never by walking its rows)
             {
                 let jn = read_or_recover(&self.store.jn_{{ s.entities[f.inner.entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ f.snake_name }});
-                for (&existing_id, right_ids) in jn.iter() {
-                    {%- if f.optional %}
-                    // A let-chain rather than nested `if`s: edition 2024 has them, and
-                    // clippy::collapsible_if flags the nested form.
-                    if let Some(ref right_id) = entity.{{ f.snake_name }}
-                        && existing_id != entity.id
-                        && right_ids.contains(right_id)
-                    {
-                        return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
-                    }
-                    {%- else %}
-                    if existing_id != entity.id && right_ids.contains(&entity.{{ f.snake_name }}) {
-                        return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", entity.{{ f.snake_name }}, existing_id)));
-                    }
-                    {%- endif %}
+                {%- if f.optional %}
+                // A let-chain rather than nested `if`s: edition 2024 has them, and
+                // clippy::collapsible_if flags the nested form.
+                if let Some(ref right_id) = entity.{{ f.snake_name }}
+                    && let Some(existing_id) = jn.sources_of(right_id).into_iter().find(|source| *source != entity.id)
+                {
+                    return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", right_id, existing_id)));
                 }
+                {%- else %}
+                if let Some(existing_id) = jn.sources_of(&entity.{{ f.snake_name }}).into_iter().find(|source| *source != entity.id) {
+                    return Err(RepositoryError::ConstraintViolation(format!("One-to-one constraint violation: {{ s.entities[f.inner.entity].pascal_name }} {} is already referenced by {{ s.entities[e].pascal_name }} {}", entity.{{ f.snake_name }}, existing_id)));
+                }
+                {%- endif %}
             }
             {%- endif %}
             {%- endfor %}
@@ -402,7 +412,7 @@ impl<'a> {{ s.entities[e].pascal_name }}HashMapTableRO<'a> {
     fn resolve_junction(
         &self,
         field: &{{ s.entities[e].pascal_name }}RelationshipField,
-    ) -> &RwLock<HashMap<EntityId, Vec<EntityId>>> {
+    ) -> &RwLock<HashMapJunction> {
         match field {
             {% for rid, r in s.entities[e].forward_relationships %}
             {{ s.entities[e].pascal_name }}RelationshipField::{{ r.field_pascal_name }} => &self.store.jn_{{ s.entities[r.inner.right_entity].snake_name }}_from_{{ s.entities[e].snake_name }}_{{ r.field_snake_name }},

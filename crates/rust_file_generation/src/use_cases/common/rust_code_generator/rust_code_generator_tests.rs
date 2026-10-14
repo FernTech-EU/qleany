@@ -1349,3 +1349,290 @@ fn teksilo_list_mutations_require_the_exact_strong_owning_field() {
         );
     }
 }
+
+/// A model with every kind of junction the store distinguishes: Folder owns
+/// Things (one-to-many, exclusive), links child Folders (weak self-referential
+/// one-to-many: a strong one would be an ownership cycle, which the manifest
+/// check rejects) and names a lead Tag (one-to-one, exclusive); a Thing shares
+/// Tags with other Things (many-to-many, shared). `file` picks the template.
+fn junction_model_snapshot(file: File) -> GenerationSnapshot {
+    let mut uow = DummyGenerationReadOps::new();
+    let entity =
+        |id: EntityId, name: &str, fields: Vec<EntityId>, relationships: Vec<EntityId>| Entity {
+            id,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            name: name.into(),
+            only_for_heritage: false,
+            inherits_from: None,
+            single_model: false,
+            fields,
+            relationships,
+            undoable: true,
+        };
+    uow.entities.insert(
+        1,
+        entity(1, "Folder", vec![400, 401, 402], vec![900, 902, 903]),
+    );
+    uow.entities
+        .insert(2, entity(2, "Thing", vec![403], vec![900, 901]));
+    uow.entities
+        .insert(3, entity(3, "Tag", vec![], vec![901, 902]));
+
+    let field =
+        |id: EntityId, name: &str, target: EntityId, kind: FieldRelationshipType, strong: bool| {
+            let is_list = matches!(
+                kind,
+                FieldRelationshipType::OneToMany
+                    | FieldRelationshipType::OrderedOneToMany
+                    | FieldRelationshipType::ManyToMany
+            );
+            Field {
+                id,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                name: name.into(),
+                field_type: FieldType::Entity,
+                entity: Some(target),
+                relationship: kind,
+                optional: !is_list,
+                is_list,
+                strong,
+                list_model: false,
+                list_model_displayed_field: None,
+                enum_name: None,
+                enum_values: vec![],
+            }
+        };
+    uow.fields.insert(
+        400,
+        field(400, "things", 2, FieldRelationshipType::OneToMany, true),
+    );
+    uow.fields.insert(
+        401,
+        field(401, "lead", 3, FieldRelationshipType::OneToOne, false),
+    );
+    uow.fields.insert(
+        402,
+        field(402, "children", 1, FieldRelationshipType::OneToMany, false),
+    );
+    uow.fields.insert(
+        403,
+        field(403, "tags", 3, FieldRelationshipType::ManyToMany, false),
+    );
+
+    let relationship = |id: EntityId,
+                        left: EntityId,
+                        right: EntityId,
+                        name: &str,
+                        kind: RelationshipType,
+                        strength: Strength,
+                        cardinality: Cardinality| Relationship {
+        id,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        left_entity: Some(left),
+        right_entity: Some(right),
+        field_name: name.into(),
+        relationship_type: kind,
+        strength,
+        direction: Direction::Forward,
+        cardinality,
+        order: None,
+    };
+    for r in [
+        relationship(
+            900,
+            1,
+            2,
+            "things",
+            RelationshipType::OneToMany,
+            Strength::Strong,
+            Cardinality::ZeroOrMore,
+        ),
+        relationship(
+            901,
+            2,
+            3,
+            "tags",
+            RelationshipType::ManyToMany,
+            Strength::Weak,
+            Cardinality::ZeroOrMore,
+        ),
+        relationship(
+            902,
+            1,
+            3,
+            "lead",
+            RelationshipType::OneToOne,
+            Strength::Weak,
+            Cardinality::ZeroOrOne,
+        ),
+        relationship(
+            903,
+            1,
+            1,
+            "children",
+            RelationshipType::OneToMany,
+            Strength::Weak,
+            Cardinality::ZeroOrMore,
+        ),
+    ] {
+        uow.relationships.insert(r.id, r);
+    }
+
+    uow.files.insert(1, file);
+    uow.globals.insert(3, base_global());
+    uow.user_interfaces.insert(1, base_user_interface());
+    uow.workspaces.insert(
+        2,
+        Workspace {
+            id: 2,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            manifest_absolute_path: "".into(),
+            global: 3,
+            entities: vec![1, 2, 3],
+            features: vec![],
+            user_interface: 1,
+        },
+    );
+    uow.workspace_entities.insert(2, vec![1, 2, 3]);
+    uow.systems.insert(
+        4,
+        System {
+            id: 4,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            version: "1.0.0".into(),
+            files: vec![],
+        },
+    );
+    uow.roots.insert(
+        1,
+        Root {
+            id: 1,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            workspace: Some(2),
+            system: Some(4),
+        },
+    );
+    SnapshotBuilder::for_file_id(&uow, 1, &Vec::new())
+        .expect("snapshot")
+        .0
+}
+
+fn junction_model_file(name: &str, template_name: &str, entity: Option<EntityId>) -> File {
+    File {
+        id: 1,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        name: name.into(),
+        relative_path: "common/src/".into(),
+        group: "base".into(),
+        template_name: template_name.into(),
+        generated_code: None,
+        status: FileStatus::New,
+        nature: Default::default(),
+        feature: None,
+        all_features: false,
+        entity,
+        all_entities: entity.is_none(),
+        use_case: None,
+        all_use_cases: false,
+        field: None,
+    }
+}
+
+/// 2.0.0 checked an exclusive write by copying every other target of the
+/// junction into a set, so bulk creation was O(N²). The store now gives each
+/// exclusive junction a reverse index and checks a write against it alone.
+#[test]
+fn hashmap_store_indexes_exclusive_junctions_and_validates_without_walking_them() {
+    let snap = junction_model_snapshot(junction_model_file(
+        "hashmap_store.rs",
+        "hashmap_store",
+        None,
+    ));
+    let code = super::generate_code_with_snapshot(&snap).expect("render hashmap_store");
+
+    // Exclusivity is fixed per junction at construction.
+    for (junction, kind) in [
+        ("jn_thing_from_folder_things", "exclusive"),
+        ("jn_tag_from_folder_lead", "exclusive"),
+        ("jn_folder_from_folder_children", "exclusive"),
+        ("jn_tag_from_thing_tags", "shared"),
+    ] {
+        assert!(
+            code.contains(&format!(
+                "{junction}: RwLock::new(HashMapJunction::{kind}()),"
+            )),
+            "{junction} should be built as {kind}"
+        );
+        assert!(code.contains(&format!("pub {junction}: RwLock<HashMapJunction>,")));
+        assert!(code.contains(&format!("pub(crate) {junction}: HashMapJunction,")));
+    }
+    assert!(!code.contains("#[derive(Debug, Default)]\npub struct HashMapStore"));
+
+    let validate = fn_bodies(&code, "validate_junction_updates");
+    assert_eq!(validate.len(), 1);
+    let body = validate[0];
+    assert!(
+        !body.contains("current.iter()") && !body.contains("used.extend"),
+        "validation walks the junction again:\n{body}"
+    );
+    let early_return = body
+        .find("replacements.iter().all(|(_, targets)| targets.is_empty())")
+        .expect("a batch without targets must return early");
+    let lock = body
+        .find("read_or_recover(junction)")
+        .expect("the index is read under the lock");
+    assert!(
+        early_return < lock,
+        "the early return must come before taking the lock"
+    );
+    assert!(body.contains("index\n                .get(id)"));
+
+    // The diagnostic covers every junction, with the exclusivity it should have.
+    let check = fn_bodies(&code, "check_junction_indexes");
+    assert_eq!(check.len(), 1);
+    assert!(check[0].contains(
+        "if !jn.is_exclusive() {\n                return Err(\"jn_thing_from_folder_things:"
+    ));
+    assert!(
+        check[0].contains(
+            "if jn.is_exclusive() {\n                return Err(\"jn_tag_from_thing_tags:"
+        )
+    );
+
+    assert!(code.contains("mod junction_tests"));
+    assert_is_valid_rust(&code, "hashmap_store");
+}
+
+#[test]
+fn entity_table_checks_ownership_through_the_junction_index() {
+    let snap = junction_model_snapshot(junction_model_file(
+        "folder_table.rs",
+        "common_entity_table",
+        Some(1),
+    ));
+    let code = super::generate_code_with_snapshot(&snap).expect("render common_entity_table");
+
+    assert!(!code.contains("use im::HashMap;"));
+    assert_eq!(code.matches("-> &RwLock<HashMapJunction> {").count(), 2);
+    assert!(code.contains(
+        "crate::database::hashmap_store::validate_junction_updates(self.resolve_junction(field), rows, scalar)"
+    ));
+    // One-to-one checks: one lookup in the index, in create and in update.
+    assert!(!code.contains("for (&existing_id, right_ids) in jn.iter()"));
+    assert_eq!(code.matches("jn.sources_of(right_id)").count(), 2);
+    // Self-referential batches: a set, built only when a target is missing.
+    assert!(!code.contains("_creating_ids.contains(id)"));
+    assert_eq!(
+        code.matches("let creating: std::collections::HashSet<EntityId>")
+            .count(),
+        1
+    );
+    assert_is_valid_rust(&code, "common_entity_table");
+}

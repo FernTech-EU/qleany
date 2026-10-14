@@ -48,3 +48,12 @@ mod test_feature_use_cases;
 
 #[cfg(test)]
 mod test_relationship_constraints;
+
+#[cfg(test)]
+mod alloc_counter;
+
+#[cfg(test)]
+mod test_relationship_index;
+
+#[cfg(test)]
+mod test_relationship_scaling;

@@ -4,6 +4,80 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v2.0.0 to next — Relationship checks stop walking the store
+
+**Qleany version**: unreleased
+
+The manifest schema remains **v6** and no manifest edit is needed. Regenerate
+`common/database/hashmap_store.rs` together with every
+`common/direct_access/{entity}/{entity}_table.rs`: the store is in file group
+`base` and the tables in `entities`, so regenerate both groups, or run
+`qleany generate` with no target. The `{entity}_repository.rs` files are
+unaffected.
+
+### Fixed: bulk creation was quadratic in the generated Rust store
+
+v2.0.0 enforced single ownership on one-to-one, one-to-many and ordered
+one-to-many relationships by copying the targets of every other row of the
+relationship into a set on each write. It did so even for a write with no
+target at all, such as creating an entity whose list fields are empty. Creating
+N rows one at a time, as a project load or an import does, therefore cost
+O(N²).
+
+Each junction of such an exclusive relationship now keeps a reverse index, from
+target to the source holding it. A write is checked with one lookup per target
+it carries, however large the relationship is, and a write that carries no
+target does not read the junction at all. The one-to-one checks in `create` and
+`update_with_relationships` read the same index instead of walking the rows,
+and deleting an entity removes it from an exclusive relationship's rows without
+visiting the others. Accepted and refused writes, and their error messages, are
+exactly those of v2.0.0, including transfers between sources replaced in the
+same batch.
+
+Measured on the generated example, creating tasks one at a time and giving
+each its own comment, in one transaction:
+
+| Tasks  | v2.0.0 debug | now, debug | v2.0.0 release | now, release |
+|--------|--------------|------------|----------------|--------------|
+| 1,000  | 0.50 s       | 0.014 s    | 0.052 s        | 0.005 s      |
+| 4,000  | 7.5 s        | 0.033 s    | 0.87 s         | 0.012 s      |
+| 16,000 | 119 s        | 0.13 s     | 16.6 s         | 0.046 s      |
+
+### What changes for hand-written code
+
+The `jn_*` junction fields of `HashMapStore`, and of `HashMapStoreSnapshot`,
+now have the type `HashMapJunction` instead of
+`im::HashMap<EntityId, Vec<EntityId>>`. Its rows are private, so nothing can
+change them without updating the index. Code that only reads a junction keeps
+compiling: `get`, `iter`, `keys`, `values`, `contains_key`, `len` and `is_empty`
+keep their signatures. `insert` and `remove` still replace or drop one source's
+row, and now update the index as well. Code that assigned a whole map to a
+junction, called `get_mut` or `entry` on one, or named the old type, must go
+through those methods instead:
+
+```diff
+- store.jn_tag_from_workspace_tags.write().unwrap().get_mut(&id).unwrap().push(tag);
++ let mut jn = store.jn_tag_from_workspace_tags.write().unwrap();
++ let mut tags = jn.get(&id).cloned().unwrap_or_default();
++ tags.push(tag);
++ jn.insert(id, tags);
+```
+
+Writing a junction directly still bypasses the relationship checks, as it did
+before; only the repository and table APIs validate a write.
+
+`HashMapStore` implements `Default` by hand instead of deriving it, since each
+junction is built exclusive or shared from its relationship type.
+`HashMapStore::new()` and `HashMapStore::default()` behave as before.
+
+`HashMapStore::check_junction_indexes()` rebuilds every index from its rows and
+returns the first difference it finds. It walks the whole store, so call it from
+tests rather than on a write path. The generated `hashmap_store.rs` also ends
+with a `#[cfg(test)]` module that runs random sequences of writes against the
+v2.0.0 check and compares both answers.
+
+---
+
 ## v1.12.0 to v2.0.0 — Teksilo editor and stricter relationships
 
 **Qleany version**: 2.0.0
