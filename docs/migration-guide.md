@@ -4,9 +4,9 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
-## v2.0.0 to next — Relationship checks stop walking the store
+## v2.0.0 to v2.0.1 — Relationship checks stop walking the store
 
-**Qleany version**: unreleased
+**Qleany version**: 2.0.1
 
 The manifest schema remains **v6** and no manifest edit is needed. Regenerate
 `common/database/hashmap_store.rs` together with every
