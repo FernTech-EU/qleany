@@ -467,7 +467,13 @@ impl DemoViewModel {
     }
 
     /// Start the pipeline.
-    pub fn start(&self) {
+    ///
+    /// Takes the event context to ask for the frame the first step runs on. The
+    /// pump in [`Self::wire`] only fires on frames somebody asked for, and nothing
+    /// else here asks: without this the run waited for an unrelated widget to want
+    /// a frame, which on an idle window never came and left the dialog on
+    /// "Preparing..." for good.
+    pub fn start(&self, ctx: &mut EventContext) {
         if self.phase.get() == Phase::Running {
             return;
         }
@@ -497,6 +503,7 @@ impl DemoViewModel {
             manifest_lines: 0,
             operation: None,
         });
+        ctx.request_frame();
     }
 
     /// Put the next-step command on the clipboard, and say so.

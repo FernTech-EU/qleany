@@ -324,7 +324,7 @@ fn footer(vm: &DemoViewModel, phase: Phase) -> impl Widget {
                 .child(
                     Button::new(tr!(demo_generate()))
                         .variant(ButtonVariant::Filled)
-                        .on_activate_fn(move |_c| start.start()),
+                        .on_activate_fn(move |c| start.start(c)),
                 );
         }
         Phase::Running => {
