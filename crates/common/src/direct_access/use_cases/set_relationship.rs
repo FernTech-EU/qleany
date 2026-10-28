@@ -61,8 +61,8 @@ impl<RF: Clone, F: WriteRelUoWFactory<RF>> UndoableSetRelationshipUseCase<RF, F>
         uow.set_relationship(id, field, right_ids)?;
         uow.commit()?;
         self.undo_stack.push_back((*id, field.clone(), before));
-        self.redo_stack
-            .push_back((*id, field.clone(), right_ids.to_vec()));
+        // Redo re-applies what undo found, so nothing is kept for it here.
+        self.redo_stack.clear();
         Ok(())
     }
 }

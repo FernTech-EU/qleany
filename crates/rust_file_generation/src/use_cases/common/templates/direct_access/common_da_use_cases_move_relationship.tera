@@ -47,7 +47,7 @@ pub struct UndoableMoveRelationshipUseCase<RF: Clone, F: WriteRelUoWFactory<RF>>
     uow_factory: F,
     // Scoped inverse: (id, field, before_order) restored on undo. A move is a pure reorder of one
     // junction row, so restoring its prior order is the exact inverse — and touches nothing else.
-    // Redo restores the order the move produced, (id, field, after_order), the same way.
+    // Redo puts back the order undo found, (id, field, after_order), the same way.
     undo_stack: VecDeque<(EntityId, RF, Vec<EntityId>)>,
     redo_stack: VecDeque<(EntityId, RF, Vec<EntityId>)>,
 }
@@ -74,7 +74,8 @@ impl<RF: Clone, F: WriteRelUoWFactory<RF>> UndoableMoveRelationshipUseCase<RF, F
         let result = uow.move_relationship(id, field, ids_to_move, new_index)?;
         uow.commit()?;
         self.undo_stack.push_back((*id, field.clone(), before));
-        self.redo_stack.push_back((*id, field.clone(), result.clone()));
+        // Redo re-applies what undo found, so nothing is kept for it here.
+        self.redo_stack.clear();
         Ok(result)
     }
 }

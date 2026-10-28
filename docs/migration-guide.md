@@ -37,9 +37,9 @@ as before.
 what they re-applied on redo, while undo pushed nothing back. After undo, redo,
 undo, the next redo was a silent no-op and the relationship kept the value the
 second undo had put back. Undo now reads the current list before restoring the
-earlier one and keeps it for redo, as the update use cases do. A move's redo
-restores the order the move produced instead of replaying the move, which
-gives the same list.
+earlier one and keeps it for redo, as the update use cases do. Redo puts back
+that list: for a move it no longer replays the move, so a write made to the
+same list after the move and before the undo is restored along with it.
 
 ---
 
