@@ -4,9 +4,9 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
-## v2.0.1 to next: Undo fixes in the generated Rust code
+## v2.0.1 to v2.0.2: Undo fixes in the generated Rust code
 
-**Qleany version**: unreleased
+**Qleany version**: 2.0.2
 
 The manifest schema remains **v6** and no manifest edit is needed. Regenerate
 `common/undo_redo.rs` and its tests, `common/tests/undo_redo_tests.rs`, which
