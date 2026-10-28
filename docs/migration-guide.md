@@ -4,6 +4,33 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v2.0.1 to next: Undo fixes in the generated Rust code
+
+**Qleany version**: unreleased
+
+The manifest schema remains **v6** and no manifest edit is needed. Regenerate
+`common/undo_redo.rs` and its tests, `common/tests/undo_redo_tests.rs`, which
+are in file group `base`.
+
+### Fixed: cancelling a nested composite dropped the enclosing group
+
+`UndoRedoManager::cancel_composite` undid and dropped the whole composite in
+progress at any depth. A caller that opens its own group inside another one,
+such as an editor's edit block around a delete-then-insert that cancels its
+group on failure, lost the enclosing group's earlier commands as well. The
+manager was then left with a nesting level but no group and no target stack,
+so the rest of the enclosing group's commands went onto the undo stack as
+separate entries.
+
+A cancel now takes back only what its own level added: those commands are
+undone, newest first, and dropped, along with any name that level gave the
+group. The enclosing group stays open and is recorded by its own
+`end_composite`. Every command of the level is offered its undo even when one
+fails, and the first failure is logged. Cancelling the outermost level behaves
+as before.
+
+---
+
 ## v2.0.0 to v2.0.1 — Relationship checks stop walking the store
 
 **Qleany version**: 2.0.1
