@@ -232,6 +232,79 @@ fn test_undo_move_relationship_ids() {
     assert_eq!(restored, vec![a, b, c]);
 }
 
+/// Redo used to pop what it re-applied while undo pushed nothing back, so the
+/// second redo of a relationship change silently did nothing.
+#[test]
+fn test_set_relationship_survives_two_undo_redo_cycles() {
+    let (mut ctx, s) = setup();
+    let tag_a = helpers::create_tag(&mut ctx, s.workspace_id, "TagA", "#AA0000");
+    let tag_b = helpers::create_tag(&mut ctx, s.workspace_id, "TagB", "#00BB00");
+
+    project_controller::set_relationship(
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
+        &ProjectRelationshipDto {
+            id: s.project_id,
+            field: ProjectRelationshipField::Tags,
+            right_ids: vec![tag_a, tag_b],
+        },
+    )
+    .unwrap();
+    let tags = |ctx: &TestContext| {
+        project_controller::get_relationship(
+            &ctx.db,
+            &s.project_id,
+            &ProjectRelationshipField::Tags,
+        )
+        .unwrap()
+    };
+
+    for cycle in 1..=2 {
+        ctx.undo.undo(None).unwrap();
+        assert!(tags(&ctx).is_empty(), "undo {cycle}");
+        ctx.undo.redo(None).unwrap();
+        assert_eq!(tags(&ctx), vec![tag_a, tag_b], "redo {cycle}");
+    }
+}
+
+#[test]
+fn test_move_relationship_survives_two_undo_redo_cycles() {
+    let (mut ctx, s) = setup();
+    let a = helpers::create_task(&mut ctx, s.project_id, "A");
+    let b = helpers::create_task(&mut ctx, s.project_id, "B");
+    let c = helpers::create_task(&mut ctx, s.project_id, "C");
+
+    project_controller::move_relationship(
+        &ctx.db,
+        &ctx.hub,
+        &mut ctx.undo,
+        None,
+        &s.project_id,
+        &ProjectRelationshipField::Tasks,
+        &[c],
+        0,
+    )
+    .unwrap();
+    let tasks = |ctx: &TestContext| {
+        project_controller::get_relationship(
+            &ctx.db,
+            &s.project_id,
+            &ProjectRelationshipField::Tasks,
+        )
+        .unwrap()
+    };
+    assert_eq!(tasks(&ctx), vec![c, a, b]);
+
+    for cycle in 1..=2 {
+        ctx.undo.undo(None).unwrap();
+        assert_eq!(tasks(&ctx), vec![a, b, c], "undo {cycle}");
+        ctx.undo.redo(None).unwrap();
+        assert_eq!(tasks(&ctx), vec![c, a, b], "redo {cycle}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Cascade delete undo
 // ---------------------------------------------------------------------------

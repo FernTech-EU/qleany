@@ -10,7 +10,9 @@ This document covers breaking changes between manifest schema versions and how t
 
 The manifest schema remains **v6** and no manifest edit is needed. Regenerate
 `common/undo_redo.rs` and its tests, `common/tests/undo_redo_tests.rs`, which
-are in file group `base`.
+are in file group `base`, and
+`common/direct_access/use_cases/set_relationship.rs` and
+`move_relationship.rs`, which are in file group `entities`.
 
 ### Fixed: cancelling a nested composite dropped the enclosing group
 
@@ -28,6 +30,16 @@ group. The enclosing group stays open and is recorded by its own
 `end_composite`. Every command of the level is offered its undo even when one
 fails, and the first failure is logged. Cancelling the outermost level behaves
 as before.
+
+### Fixed: the second redo of a relationship change did nothing
+
+`UndoableSetRelationshipUseCase` and `UndoableMoveRelationshipUseCase` popped
+what they re-applied on redo, while undo pushed nothing back. After undo, redo,
+undo, the next redo was a silent no-op and the relationship kept the value the
+second undo had put back. Undo now reads the current list before restoring the
+earlier one and keeps it for redo, as the update use cases do. A move's redo
+restores the order the move produced instead of replaying the move, which
+gives the same list.
 
 ---
 

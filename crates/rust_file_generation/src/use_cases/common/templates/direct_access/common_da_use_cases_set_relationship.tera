@@ -84,8 +84,12 @@ impl<RF: Clone + Send + 'static, F: WriteRelUoWFactory<RF> + Send + 'static> Und
         if let Some((id, field, before)) = self.undo_stack.pop_back() {
             let mut uow = self.uow_factory.create();
             uow.begin_transaction()?;
+            // Capture the current list before restoring, for redo: `redo` pops what it
+            // re-applies, so an undo that pushed nothing back made the second redo a no-op.
+            let current = uow.get_relationship(&id, &field)?;
             uow.set_relationship(&id, &field, &before)?;
             uow.commit()?;
+            self.redo_stack.push_back((id, field, current));
         }
         Ok(())
     }
