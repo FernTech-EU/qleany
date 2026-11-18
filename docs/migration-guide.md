@@ -4,7 +4,7 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
-## v2.0.2 to next: Shared enum names
+## v2.0.2 to next: Shared enum names, and Teksilo 0.27
 
 **Qleany version**: unreleased
 
@@ -57,6 +57,15 @@ features may still give one name different values.
 ```
 Entity 'Task', field 'project_status': enum 'ProjectStatus' declares values [Active, Done], but Entity 'Project', field 'status' declares [Active, OnHold, Completed, Archived]; every use of an enum name must declare the same values
 ```
+
+### Changed: generated Teksilo projects depend on teksilo 0.27.0
+
+The generated `teksilo_ui/Cargo.toml` asked for `teksilo = "0.14.3"`, so a new
+project started on a release thirteen minors old. It now asks for `0.27.0`, and
+the generated Teksilo code builds and passes its headless test on it. An
+existing project keeps its own `Cargo.toml`, which is yours once you have edited
+it: bump the version there when you are ready to move your hand-written UI code
+to 0.27.
 
 ---
 
