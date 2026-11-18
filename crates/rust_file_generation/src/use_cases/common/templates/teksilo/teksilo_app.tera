@@ -70,9 +70,11 @@ use std::rc::Rc;
 
 use frontend::AppContext;
 {%- endif %}
+{%- set_global seen_enums = [] %}
 {%- for f in demo_ent.normal_fields %}
-{%- if f.inner.field_type == "Enum" and not f.is_list %}
+{%- if f.inner.field_type == "Enum" and not f.is_list and f.inner.enum_name not in seen_enums %}
 use frontend::common::entities::{{ f.inner.enum_name }};
+{%- set_global seen_enums = seen_enums | concat(with=f.inner.enum_name) %}
 {%- endif %}
 {%- endfor %}
 {#- `bootstrap` below walks `demo_ent`'s ownership chain, so it needs the command

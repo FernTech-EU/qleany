@@ -202,6 +202,16 @@ entities:
           - Medium
           - Hard
           - Expert
+      # Same enum twice in one entity, and again on TeamMember (rule C50: one
+      # definition is generated, so every use must list the same values)
+      - name: estimated_difficulty
+        type: enum
+        enum_name: TaskDifficulty
+        enum_values:
+          - Easy
+          - Medium
+          - Hard
+          - Expert
       - name: category
         type: entity
         entity: Category
@@ -244,6 +254,14 @@ entities:
           - Designer
           - Manager
           - Tester
+      - name: preferred_difficulty
+        type: enum
+        enum_name: TaskDifficulty
+        enum_values:
+          - Easy
+          - Medium
+          - Hard
+          - Expert
       - name: department
         type: entity
         entity: Category

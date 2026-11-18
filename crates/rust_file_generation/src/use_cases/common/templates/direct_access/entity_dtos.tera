@@ -7,9 +7,11 @@ use std::convert::From;
 use common::entities::{{ s.entities[e].pascal_name }};
 use common::types::EntityId;
 {%- set_global has_float = false %}
+{%- set_global seen_enums = [] %}
 {%- for f in s.entities[e].fields %}
-{%- if f.inner.field_type == "Enum" %}
+{%- if f.inner.field_type == "Enum" and f.inner.enum_name not in seen_enums %}
 pub use common::entities::{{ f.inner.enum_name }};
+{%- set_global seen_enums = seen_enums | concat(with=f.inner.enum_name) %}
 {%- endif %}
 {%- if f.inner.field_type == "Float" %}
 {%- set_global has_float = true %}

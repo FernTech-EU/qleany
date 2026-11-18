@@ -20,11 +20,13 @@ use std::collections::HashMap;
 #[allow(unused_imports)]
 use crate::mobile_types::*;
 
-{# ── Entity-level enum mirrors ── #}
+{# ── Entity-level enum mirrors ──
+   A shared enum is mirrored once, in its owner's module (uniffi exports one
+   symbol per type name); the other modules reach it through mobile_types. #}
 {%- set_global seen_enums = [] %}
 {%- for f in entity.fields %}
 {%- if f.inner.field_type == "Enum" %}
-{%- if f.inner.enum_name not in seen_enums %}
+{%- if f.inner.enum_name not in seen_enums and s.entity_enum_owners[f.inner.enum_name] == entity.snake_name %}
 {%- set_global seen_enums = seen_enums | concat(with=f.inner.enum_name) %}
 
 #[derive(uniffi::Enum, Clone, Debug, PartialEq)]

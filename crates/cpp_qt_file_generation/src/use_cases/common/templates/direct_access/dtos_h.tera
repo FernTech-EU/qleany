@@ -46,8 +46,10 @@ enum class {{ ent.pascal_name }}RelationshipField
 };
 Q_ENUM_NS({{ ent.pascal_name }}RelationshipField)
 
+{%- set_global seen_enums = [] %}
 {%- for f in ent.fields %}
-{%- if f.inner.field_type == "Enum" %}
+{%- if f.inner.field_type == "Enum" and f.inner.enum_name not in seen_enums %}
+{%- set_global seen_enums = seen_enums | concat(with=f.inner.enum_name) %}
 enum class {{ f.inner.enum_name }}
 {
     {%- for ev in f.inner.enum_values %}

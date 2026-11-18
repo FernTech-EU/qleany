@@ -36,14 +36,23 @@
 
 namespace {{ s.global.application_pascal_name }}::Common::Entities {
 
+{#- Entities may share an enum (check rule C50 makes sure the values agree), and a
+    child entity carries its parent's enum fields, so the same enum can appear in
+    several headers of this namespace. The guard keeps one definition per
+    translation unit; the definitions are token-identical, as the ODR requires. -#}
+{%- set_global seen_enums = [] %}
 {%- for f in ent.fields %}
-{%- if f.inner.field_type == "Enum" %}
+{%- if f.inner.field_type == "Enum" and f.inner.enum_name not in seen_enums %}
+{%- set_global seen_enums = seen_enums | concat(with=f.inner.enum_name) %}
+#ifndef {{ s.global.application_snake_name | upper }}_ENTITY_ENUM_{{ f.inner.enum_name }}
+#define {{ s.global.application_snake_name | upper }}_ENTITY_ENUM_{{ f.inner.enum_name }}
 enum class {{ f.inner.enum_name }}
 {
 {%- for ev in f.inner.enum_values %}
     {{ ev }}{% if not loop.last %},{% endif %}
 {%- endfor %}
 };
+#endif
 
 {%- endif %}
 {%- endfor %}

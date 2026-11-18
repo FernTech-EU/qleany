@@ -293,6 +293,11 @@ pub const CRITICAL_RULES: &[Rule] = &[
         severity: "critical",
         description: "ManyToOne and ManyToMany relationships must be weak (strong must be false)",
     },
+    Rule {
+        id: "C50",
+        severity: "critical",
+        description: "An enum_name used by several entity fields, or by several DTO fields of one feature, must declare the same enum_values each time",
+    },
 ];
 
 /// Warning rules – non-blocking issues worth reviewing.
@@ -583,6 +588,47 @@ fn join_quoted_names(names: &[String]) -> String {
 /// Validate enum_values for both entity fields and DTO fields.
 /// Supports simple variants (`Active`), tuple variants (`Text(String)`),
 /// and struct variants (`Image { name: String, width: i64 }`).
+/// First declaration of each enum name in one generated scope, to reject a
+/// later declaration with other values (rule C50). Generators emit one
+/// definition per name and scope, so a disagreeing one would be dropped.
+#[derive(Default)]
+struct EnumDefinitions {
+    first: HashMap<String, (Vec<String>, String)>,
+}
+
+impl EnumDefinitions {
+    fn declare(
+        &mut self,
+        enum_name: Option<&str>,
+        values: &[String],
+        location: String,
+        critical_errors: &mut Vec<String>,
+    ) {
+        // An empty name or value list is reported by C39/C40.
+        let Some(name) = enum_name.filter(|n| !n.is_empty()) else {
+            return;
+        };
+        let values: Vec<String> = values.iter().map(|v| v.trim().to_string()).collect();
+        match self.first.get(name) {
+            None => {
+                self.first.insert(name.to_string(), (values, location));
+            }
+            Some((first_values, first_location)) if *first_values != values => {
+                critical_errors.push(format!(
+                    "{}: enum '{}' declares values [{}], but {} declares [{}]; \
+                     every use of an enum name must declare the same values",
+                    location,
+                    name,
+                    values.join(", "),
+                    first_location,
+                    first_values.join(", ")
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+}
+
 fn validate_enum_values(
     vals: &[String],
     context: &str, // e.g. "Entity 'Foo', field 'bar'" or "DTO 'Baz', field 'qux'"
@@ -861,6 +907,24 @@ impl CheckUseCase {
             .filter(|f| f.field_type == FieldType::Enum)
             .filter_map(|f| f.enum_name.clone())
             .collect();
+
+        // Entity enums are generated once per name (one Rust module, one C++
+        // namespace), so every field using a name must declare the same values.
+        let mut entity_enums = EnumDefinitions::default();
+        for entity in &entities {
+            for fid in &entity.fields {
+                if let Some(field) = field_by_id.get(fid)
+                    && field.field_type == FieldType::Enum
+                {
+                    entity_enums.declare(
+                        field.enum_name.as_deref(),
+                        &field.enum_values,
+                        format!("Entity '{}', field '{}'", entity.name, field.name),
+                        &mut critical_errors,
+                    );
+                }
+            }
+        }
 
         for entity in &entities {
             if entity.fields.is_empty() && !entity.only_for_heritage {
@@ -1433,6 +1497,8 @@ impl CheckUseCase {
 
             // Unique DTO names per feature
             let mut dto_names_per_feature: HashMap<&str, HashSet<String>> = HashMap::new();
+            // A feature's DTO enums share one module (Rust) or header (C++).
+            let mut dto_enums_per_feature: HashMap<&str, EnumDefinitions> = HashMap::new();
 
             for uc in &use_cases {
                 let dto_ids: Vec<EntityId> =
@@ -1493,6 +1559,20 @@ impl CheckUseCase {
                                     && let Some(ref en) = df.enum_name
                                 {
                                     all_enum_names.insert(en.clone());
+                                }
+                                if df.field_type == DtoFieldType::Enum {
+                                    dto_enums_per_feature
+                                        .entry(feature_name)
+                                        .or_default()
+                                        .declare(
+                                            df.enum_name.as_deref(),
+                                            &df.enum_values,
+                                            format!(
+                                                "Feature '{}', DTO '{}', field '{}'",
+                                                feature_name, dto.name, df.name
+                                            ),
+                                            &mut critical_errors,
+                                        );
                                 }
                             }
 

@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use crate::types::EntityId;
 use crate::types::HasId;
 
+{#- One enum per name: entities may share an enum (check rule C50 makes sure the
+    values agree), and a child entity carries its parent's enum fields. -#}
+{%- set_global seen_enums = [] %}
 {% for eid, ent in s.entities %}
 {%- set_global has_float = false %}
 {%- for f in ent.fields %}
@@ -33,7 +36,8 @@ impl HasId for {{ ent.pascal_name }} {
 }
 
 {%- for f in ent.fields %}
-{%- if f.inner.field_type == "Enum" %}
+{%- if f.inner.field_type == "Enum" and f.inner.enum_name not in seen_enums %}
+{%- set_global seen_enums = seen_enums | concat(with=f.inner.enum_name) %}
 #[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq{% if not f.enum_needs_float %}, Eq{% endif %})]
 pub enum {{ f.inner.enum_name }} {
     #[default]

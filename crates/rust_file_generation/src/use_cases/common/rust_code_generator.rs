@@ -90,6 +90,10 @@ pub(crate) struct GenerationSnapshot {
     features: IndexMap<EntityId, FeatureVM>,
     use_cases: IndexMap<EntityId, UseCaseVM>,
     dtos: IndexMap<EntityId, DtoVM>,
+    /// Entity enum name -> snake_name of the one entity whose files define it.
+    /// Built from every generated entity, whatever the file's scope, so a
+    /// per-entity file knows whether a shared enum is its own to emit.
+    entity_enum_owners: IndexMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -894,6 +898,7 @@ impl SnapshotBuilder {
                     features: cached_snapshot.features.clone(),
                     use_cases: cached_snapshot.use_cases.clone(),
                     dtos: cached_snapshot.dtos.clone(),
+                    entity_enum_owners: cached_snapshot.entity_enum_owners.clone(),
                 };
 
                 log::debug!("Snapshot cache hit for file id {}", file.id);
@@ -1473,9 +1478,57 @@ impl SnapshotBuilder {
                 features: features_vm,
                 use_cases: use_cases_vm,
                 dtos: dtos_vm,
+                entity_enum_owners: Self::entity_enum_owners(uow, workspace_id)?,
             },
             false,
         ))
+    }
+
+    /// Several entities may carry an enum of the same name: a child inherits its
+    /// parent's enum fields, and the manifest may reuse an enum on purpose (check
+    /// rule C50 makes sure every use declares the same values). Rust needs one
+    /// definition per name, so the first generated entity, in manifest order,
+    /// whose own or inherited fields use it owns it.
+    fn entity_enum_owners(
+        uow: &dyn GenerationOps,
+        workspace_id: EntityId,
+    ) -> anyhow::Result<IndexMap<String, String>> {
+        let entity_ids = uow.get_workspace_relationship(
+            &workspace_id,
+            &common::direct_access::workspace::WorkspaceRelationshipField::Entities,
+        )?;
+        let entities: Vec<Entity> = uow
+            .get_entity_multi(&entity_ids)?
+            .into_iter()
+            .flatten()
+            .collect();
+        let by_id: HashMap<EntityId, &Entity> = entities.iter().map(|e| (e.id, e)).collect();
+
+        let mut owners: IndexMap<String, String> = IndexMap::new();
+        for entity in entities.iter().filter(|e| !e.only_for_heritage) {
+            // Field ids of the entity and its ancestors; `seen` stops a cycle.
+            let mut field_ids: Vec<EntityId> = Vec::new();
+            let mut seen: Vec<EntityId> = Vec::new();
+            let mut current = Some(entity);
+            while let Some(e) = current {
+                if seen.contains(&e.id) {
+                    break;
+                }
+                seen.push(e.id);
+                field_ids.extend(&e.fields);
+                current = e.inherits_from.and_then(|id| by_id.get(&id).copied());
+            }
+            for field in uow.get_field_multi(&field_ids)?.into_iter().flatten() {
+                if field.field_type == FieldType::Enum
+                    && let Some(name) = field.enum_name
+                {
+                    owners
+                        .entry(name)
+                        .or_insert_with(|| heck::AsSnakeCase(&entity.name).to_string());
+                }
+            }
+        }
+        Ok(owners)
     }
 }
 
@@ -1543,6 +1596,7 @@ mod tests {
             features: IndexMap::new(),
             use_cases: IndexMap::new(),
             dtos: IndexMap::new(),
+            entity_enum_owners: IndexMap::new(),
         };
         context.insert("s", &snapshot);
         let code = tera.render("root_cargo", &context).unwrap();
@@ -1721,6 +1775,7 @@ mod tests {
             features: IndexMap::new(),
             use_cases: IndexMap::new(),
             dtos: IndexMap::new(),
+            entity_enum_owners: IndexMap::new(),
         };
 
         // Render directly with Tera to allow adding a workaround for `null` literal in template
@@ -1822,6 +1877,7 @@ mod tests {
             features: IndexMap::new(),
             use_cases: IndexMap::new(),
             dtos: IndexMap::new(),
+            entity_enum_owners: IndexMap::new(),
         };
 
         let tera = get_rust_tera();

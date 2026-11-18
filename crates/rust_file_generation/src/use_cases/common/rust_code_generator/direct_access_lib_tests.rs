@@ -133,6 +133,7 @@ fn render_direct_access_lib_lists_entities() {
         features: IndexMap::new(),
         use_cases: IndexMap::new(),
         dtos: IndexMap::new(),
+        entity_enum_owners: IndexMap::new(),
     };
 
     let tera = get_rust_tera();

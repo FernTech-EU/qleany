@@ -233,7 +233,9 @@ features:
     - Sold
 ```
 
-Like entities, the enum name should be PascalCase. Enum variant names should also be PascalCase. And the name must be unique.
+Like entities, the enum name should be PascalCase. Enum variant names should also be PascalCase.
+
+An enum name stands for one enum. Several entity fields may use the same `enum_name`, in one entity or across entities, and the enum is generated once; rule **C50** requires every one of them to list the same `enum_values` in the same order. DTO enums follow the same rule within a feature, since each feature generates its own module; two features may give one name different values.
 
 #### Complex Enum Variants (Rust Only)
 

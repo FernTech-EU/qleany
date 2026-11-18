@@ -4,6 +4,62 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
+## v2.0.2 to next: Shared enum names
+
+**Qleany version**: unreleased
+
+The manifest schema remains **v6**. A manifest that `qleany check` accepted and
+that compiled before still does; one that reused an enum name did not compile,
+and now either compiles or is refused by the new rule C50.
+
+### Fixed: an enum name used by two entities generated two definitions
+
+Every entity enum lands in one Rust module (`common::entities`) and one C++
+namespace (`Common::Entities`), but each field emitted its own definition. Two
+entities with a `status` field of enum `Status`, an entity using one enum on two
+fields, or a child entity inheriting an enum field from a generated parent all
+produced a second `pub enum Status` (rustc E0428) or `enum class Status` (a C++
+redefinition), after a check that had reported the manifest valid. With the
+mobile bridge on, the `MobileStatus` mirror was emitted once per entity too,
+which uniffi refuses as a duplicate exported symbol.
+
+An enum name now stands for one enum:
+
+- Rust `common/src/entities.rs` defines each name once, and an entity's
+  `dtos.rs` re-exports it once.
+- The mobile bridge mirrors a shared enum in the module of its first entity in
+  manifest order; the other modules reach it through `mobile_types`, as they
+  already did for enums referenced by complex variants.
+- C++ entity headers wrap each enum in an include guard named
+  `<APP_SNAKE>_ENTITY_ENUM_<EnumName>`, so headers that share an enum can be
+  included together. The definitions are identical, which the C++ one-definition
+  rule requires.
+
+Regenerate `common/src/entities.rs`, `direct_access/src/*/dtos.rs` and, with the
+mobile bridge, `mobile_bridge/src/*_commands.rs` (Rust), or
+`src/common/entities/*.h` and `src/direct_access/*/dtos.h` (C++/Qt). A manifest
+without shared enum names regenerates the Rust files unchanged; the C++ entity
+headers gain the guards.
+
+### New check: C50, one enum name with two lists of values
+
+`qleany check` gains a critical rule:
+
+> **C50** — An enum_name used by several entity fields, or by several DTO fields
+> of one feature, must declare the same enum_values each time
+
+Since one definition is generated per name, a second declaration with other
+values would be silently lost. The comparison is exact and ordered: the order
+sets the default variant and, in C++, the integer values. DTO enums are compared
+within a feature only, because each feature generates its own module, so two
+features may still give one name different values.
+
+```
+Entity 'Task', field 'project_status': enum 'ProjectStatus' declares values [Active, Done], but Entity 'Project', field 'status' declares [Active, OnHold, Completed, Archived]; every use of an enum name must declare the same values
+```
+
+---
+
 ## v2.0.1 to v2.0.2: Undo fixes in the generated Rust code
 
 **Qleany version**: 2.0.2
