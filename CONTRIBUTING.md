@@ -104,7 +104,7 @@ To build against a local teksilo checkout instead, add an untracked
 teksilo = { path = "../teksilo/crates/teksilo" }
 ```
 
-`.cargo/` is gitignored. The patch applies only when the local crate's version
+`.cargo/config.toml` is gitignored (only `.cargo/audit.toml` is committed). The patch applies only when the local crate's version
 satisfies the requirement in `Cargo.toml`, so both move together.
 
 A patch rewrites `Cargo.lock` on every cargo invocation, replacing the registry

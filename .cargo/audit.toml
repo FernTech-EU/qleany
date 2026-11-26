@@ -1,0 +1,29 @@
+# Advisories `cargo audit` may skip, each one checked against how Qleany
+# actually uses the crate. Every entry waits on a crate we don't own; delete it
+# as soon as that crate moves. Anything new still fails the Security Audit
+# workflow.
+
+[advisories]
+ignore = [
+    # zip 6.0.0 (text-document-io, and epub-builder under it) and zip 8.6.0
+    # (docx-rs), all pulled in by teksilo's text-document 1.12. text-document-io
+    # 1.16 is on zip 9, but reaching it means a teksilo bump; epub-builder and
+    # docx-rs have no release on zip 9 yet. Every one of these is on the read
+    # side, and nothing here ever opens a zip archive: text-document-io and
+    # epub-builder only use `ZipWriter` (ODT and EPUB export), docx-rs's reader
+    # (`read_docx`) is never called, and Qleany itself calls none of the
+    # DOCX/ODT/EPUB exports either.
+    # - extraction (`ZipArchive::extract`, permissions, symlinks);
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+    "RUSTSEC-2026-0429",
+    "RUSTSEC-2026-0546",
+    # - AES entries: `aes-crypto` is on for zip 6 (text-document-io takes the
+    #   default features), but no entry is ever read, so none is decrypted;
+    "RUSTSEC-2026-0545",
+    # - Shrink/Reduce/Implode decoders: the `legacy-zip` feature is off;
+    "RUSTSEC-2026-0547",
+    # - `ZipStreamReader`: never used.
+    "RUSTSEC-2026-0548",
+]
