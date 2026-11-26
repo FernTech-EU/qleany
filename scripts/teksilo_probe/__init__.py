@@ -44,13 +44,15 @@ Modules:
 ``navigate``  reaching a widget a virtualized view has not realised yet.
 ``fixtures``  scratch space, and never opening a checked-in fixture.
 ``shot``      screenshots onto disk.
+``live_image`` aiming at a live picture's source pixels, and cutting it out of a
+              screenshot.
 """
 
 from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from . import bridge, fixtures, navigate, report, resolve, shot, tools, tree
+from . import bridge, fixtures, live_image, navigate, report, resolve, shot, tools, tree
 from .bridge import Bridge, LaunchedApp, attach, launch, mcp_argv, wait_for_bridge
 from .fixtures import make_writable, scratch_dir, scratch_path, working_copy
 from .navigate import (
@@ -69,8 +71,8 @@ from .tree import bounds, center, find, find_all, in_region, labels, nodes, wait
 
 __all__ = [
     # modules
-    "bridge", "fixtures", "navigate", "report", "resolve", "session", "shot",
-    "tools", "tree",
+    "bridge", "fixtures", "live_image", "navigate", "report", "resolve", "session",
+    "shot", "tools", "tree",
     # session
     "Session", "ToolResult", "ToolError", "ProbeError", "connect", "unwrap",
     # bridge

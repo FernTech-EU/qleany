@@ -56,7 +56,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # attach to. `async-std` (not bare `async`) because bare `async` installs an
 # executor with NO reactor: it runs `spawn_blocking` futures fine and then hangs
 # silently the first time anything awaits a native future.
-teksilo = { version = "0.14.3", features = [
+teksilo = { version = "0.29.1", features = [
     "theme-fluent",
     "automation",
     "async-std",
@@ -79,5 +79,5 @@ naming = { package = "qleany-naming", version = "2.0.2", path = "crates/naming" 
 [workspace.metadata]
 
 [workspace.metadata.teksilo]
-probe = "0.14.3"
+probe = "0.29.1"
 

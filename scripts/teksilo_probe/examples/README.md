@@ -3,7 +3,7 @@
 
 # Worked probe examples
 
-Three probes that run against real apps in the teksilo workspace. They are not
+Four probes that run against real apps in the teksilo workspace. They are not
 illustrations — each one launches its app, drives it, asserts, and exits
 0 / 1 / 2. Run them; then copy the one closest to your case into `scripts/` and
 edit it.
@@ -17,16 +17,18 @@ will overwrite it.
 | `example_data_collections.py` | `data-collections` | reach a row a `ListView` / `TreeView` / `TableView` / `GridView` has not realised yet, or work out why a node id stopped resolving |
 | `example_dialogs.py` | `dialogs-and-popovers` | assert on a dialog, message box, popover or menu — anything whose content is not in the window you started from |
 | `example_rich_text.py` | `rich-text-editor` | type into something, drive an IME, undo, or read a document's text back out of the accessibility tree |
+| `example_live_image.py` | `live-image-demo` | aim at the pixels of a live picture (a VM screen, a video, a camera), check that its frames flow, or check that a window is idle |
 
 ## Running them
 
 ```sh
-cargo build -p data-collections -p dialogs-and-popovers -p rich-text-editor
+cargo build -p data-collections -p dialogs-and-popovers -p rich-text-editor -p live-image-demo
 cargo install teksilo-automation-mcp --locked     # the client half, once
 
 python3 example_data_collections.py
 python3 example_dialogs.py
 python3 example_rich_text.py
+python3 example_live_image.py
 ```
 
 Each takes two optional flags:
@@ -91,9 +93,23 @@ platform accelerator (`command=True`, never a literal `ctrl` — a chord declare
 still reports success*), and drives an IME preedit/commit cycle, which is
 observable mid-composition.
 
+**`example_live_image.py` — a picture the tree cannot describe.** A live
+picture's pixels are in no accessibility node, and a probe that aims at the
+widget's bounds clicks wherever the fit, the letterbox, the rotation and the
+scale happen to put the guest's pixel today. The probe aims with
+`inject_pointer {node, source}` instead (`teksilo_probe.live_image`'s
+`click_source`), which lands on the centre of that source pixel whatever the
+window does, and reads the guest's side back from what the demo wrote into the
+picture's description. It takes frames flowing from the screenshot's own record
+of the commit it drew (`live_images`), never from `live_image_stats` read
+afterwards, which the producer outruns. And it proves an idle window is idle
+from the app's own `TEKSILO_IDLE_TRACE` log, after first checking the trace is
+on at all: ten silent seconds from a trace that never printed would prove
+nothing.
+
 ## The shape to copy
 
-All three are laid out the same way, and staying with it is worth more than any
+All four are laid out the same way, and staying with it is worth more than any
 individual trick in them:
 
 1. A module docstring saying what the probe proves and why it needs a live app.
