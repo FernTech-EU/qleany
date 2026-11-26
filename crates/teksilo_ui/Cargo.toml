@@ -91,3 +91,20 @@ heck = "0.5"
 
 [lints]
 workspace = true
+
+# `cargo release` finalizes docs/migration-guide.md in the release commit. The
+# one section headed "vX.Y.Z to next" (its title, if any, is kept) becomes
+# "vX.Y.Z to v<released>" with that version in place of "unreleased", and a new
+# empty "v<released> to next" section opens above it for the following release:
+# write the next migration notes there.
+#
+# Declared here, not in release.toml: a workspace-level replacement runs once per
+# member with paths relative to each crate. One regex and no marker comment,
+# because `qleany docs migration-guide` prints the guide through termimad, which
+# would show an HTML comment as text. `exactly = 1` stops the release when the
+# guide has no "to next" section, or two. A pre-release skips it, since
+# `prerelease` defaults to false.
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "../../docs/migration-guide.md", exactly = 1, search = '^## (v[0-9]+\.[0-9]+\.[0-9]+) to next(.*)\n\n\*\*Qleany version\*\*: unreleased$', replace = "## v{{version}} to next\n\n**Qleany version**: unreleased\n\n---\n\n## ${1} to v{{version}}${2}\n\n**Qleany version**: {{version}}" },
+]
