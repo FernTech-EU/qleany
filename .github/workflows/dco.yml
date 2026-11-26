@@ -20,39 +20,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check DCO
-        uses: dcoapp/app@v1
-        # Note: This action requires the DCO app to be installed on the repository
-        # See: https://github.com/apps/dco
+      # A plain git check: `dcoapp/app` is a GitHub App, not an action, so
+      # `uses: dcoapp/app@v1` never resolved and this job failed on every pull
+      # request whatever its commits carried.
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      # Alternative: Use a different DCO checker that doesn't require app installation
-      # - name: Checkout repository
-      #   uses: actions/checkout@v4
-      #   with:
-      #     fetch-depth: 0  # Fetch all history for DCO check
-      #
-      # - name: Check DCO
-      #   run: |
-      #     # Check that all commits in the PR are signed off
-      #     BASE_SHA="${{ github.event.pull_request.base.sha }}"
-      #     HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-      #     
-      #     MISSING_SIGNOFF=""
-      #     for SHA in $(git rev-list $BASE_SHA..$HEAD_SHA); do
-      #       if ! git log --format='%B' -n 1 $SHA | grep -q "^Signed-off-by:"; then
-      #         MISSING_SIGNOFF="$MISSING_SIGNOFF $SHA"
-      #       fi
-      #     done
-      #     
-      #     if [[ -n "$MISSING_SIGNOFF" ]]; then
-      #       echo "::error::The following commits are missing DCO sign-off:$MISSING_SIGNOFF"
-      #       echo ""
-      #       echo "Please sign off your commits by running:"
-      #       echo "  git rebase --signoff HEAD~N  # where N is the number of commits to sign"
-      #       echo "  git push --force-with-lease"
-      #       echo ""
-      #       echo "Or add to each commit:"
-      #       echo "  Signed-off-by: Your Name <your.email@example.com>"
-      #       exit 1
-      #     fi
-      #     echo "All commits have DCO sign-off"
+      - name: Check DCO
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          MISSING_SIGNOFF=""
+          for SHA in $(git rev-list --no-merges "$BASE_SHA..$HEAD_SHA"); do
+            if ! git log --format='%B' -n 1 "$SHA" | grep -q "^Signed-off-by:"; then
+              MISSING_SIGNOFF="$MISSING_SIGNOFF $SHA"
+            fi
+          done
+
+          if [[ -n "$MISSING_SIGNOFF" ]]; then
+            echo "::error::The following commits are missing DCO sign-off:$MISSING_SIGNOFF"
+            echo ""
+            echo "Please sign off your commits by running:"
+            echo "  git rebase --signoff HEAD~N  # where N is the number of commits to sign"
+            echo "  git push --force-with-lease"
+            echo ""
+            echo "Or add to each commit:"
+            echo "  Signed-off-by: Your Name <your.email@example.com>"
+            exit 1
+          fi
+          echo "All commits have DCO sign-off"
