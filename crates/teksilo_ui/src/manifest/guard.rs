@@ -31,27 +31,58 @@ pub fn with_unsaved_settled(
         then(ctx);
         return;
     }
-    let vm = vm.clone();
-    MessageBox::question(title)
-        .text(message)
-        .buttons(MessageBoxButtons::SaveDiscardCancel)
-        .on_result(move |result, ctx| {
-            if may_proceed(&vm, result.button) {
-                then(ctx);
-            }
-        })
-        .present(ctx);
+    ask(vm, ctx, title, message, move |go_on, ctx| {
+        if go_on {
+            then(ctx);
+        }
+    });
 }
 
-/// Present the shared quit confirmation directly, including from window callbacks.
-pub fn confirm_quit(vm: &ManifestViewModel, ctx: &mut EventContext) {
-    with_unsaved_settled(
+/// The window's close guard: closing with unsaved work asks first.
+///
+/// Every way out reaches it: the window's own close button, the Quit menu row and
+/// Ctrl+Q (a guarded `ctx.quit()`), and a quit the platform asks for. The answer
+/// comes back through a [`CloseDecision`] rather than a forced close, because the
+/// dialog's callback runs in the dialog's own window on macOS and Windows, and a
+/// `close_window_forced` there would close the dialog and leave Qleany open. The
+/// decision also resumes or abandons a quit waiting on this window.
+pub fn guard_close(vm: &ManifestViewModel, ctx: &mut EventContext) -> CloseResponse {
+    if !vm.can_save().get() {
+        return CloseResponse::Close;
+    }
+    let decision = CloseDecision::new();
+    let answer = decision.clone();
+    ask(
         vm,
         ctx,
         tr!(quit_unsaved_title()),
         tr!(quit_unsaved_message()),
-        |ctx| ctx.close_window_forced(),
+        move |go_on, _ctx| {
+            if go_on {
+                answer.proceed();
+            } else {
+                answer.cancel();
+            }
+        },
     );
+    CloseResponse::Defer(decision)
+}
+
+/// The one Save/Discard/Cancel dialog. `answer` learns whether the caller may go
+/// on: Discard, or a Save that succeeded.
+fn ask(
+    vm: &ManifestViewModel,
+    ctx: &mut EventContext,
+    title: LocalizedString,
+    message: LocalizedString,
+    answer: impl Fn(bool, &mut EventContext) + 'static,
+) {
+    let vm = vm.clone();
+    MessageBox::question(title)
+        .text(message)
+        .buttons(MessageBoxButtons::SaveDiscardCancel)
+        .on_result(move |result, ctx| answer(may_proceed(&vm, result.button), ctx))
+        .present(ctx);
 }
 
 fn may_proceed(vm: &ManifestViewModel, choice: StandardButton) -> bool {

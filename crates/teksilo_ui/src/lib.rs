@@ -174,15 +174,13 @@ pub fn run_with(app_ctx: Rc<AppContext>) {
                 .size(1280, 820)
                 .min_size(960, 640)
                 .decorations(DecorationsMode::CustomChrome)
-                // The window's own close button goes through the same question the
-                // Quit menu row asks. Present directly: a window callback has no
-                // input dispatch to drain an intent on Teksilo 0.14.3.
+                // The window's close button, the Quit menu row and a quit the
+                // platform asks for all land here and ask the same question.
                 .on_close_requested(move |ctx| {
                     if !guard_unsaved.get() {
                         return CloseResponse::Close;
                     }
-                    crate::manifest::guard::confirm_quit(&guard_manifest, ctx);
-                    CloseResponse::Veto
+                    crate::manifest::guard::guard_close(&guard_manifest, ctx)
                 })
                 .root(move |tree, _state| {
                     crate::shell::window::build_root(
