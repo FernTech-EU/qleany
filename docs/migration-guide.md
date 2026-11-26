@@ -4,9 +4,15 @@ This document covers breaking changes between manifest schema versions and how t
 
 ---
 
-## v2.0.2 to next: Shared enum names, and Teksilo 0.29
+## v2.1.0 to next
 
 **Qleany version**: unreleased
+
+---
+
+## v2.0.2 to v2.1.0: Shared enum names, and Teksilo 0.29
+
+**Qleany version**: 2.1.0
 
 The manifest schema remains **v6**. A manifest that `qleany check` accepted and
 that compiled before still does; one that reused an enum name did not compile,
